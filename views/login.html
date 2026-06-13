@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Log in • FootyOrg</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="/">FootyOrg</a>
+      <nav class="nav">
+        <a class="pill" href="/join">Join a league</a>
+        <a class="btn primary" href="/create">Create a league</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="card">
+        <h1>Log in</h1>
+        <p>Welcome back.</p>
+        <form class="form" method="POST" action="/login">
+          <input type="email" name="email" placeholder="Email" required />
+          <input type="password" name="password" placeholder="Password" required />
+          <button class="btn primary" type="submit">Continue</button>
+        </form>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

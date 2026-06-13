@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Join a league • FootyOrg</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="/">FootyOrg</a>
+      <nav class="nav">
+        <a class="pill" href="/login">Log in</a>
+        <a class="btn primary" href="/create">Create a league</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="card">
+        <h1>Join a league</h1>
+        <p>Fill in your details and you'll be sent to checkout.</p>
+        <form class="form" method="POST" action="/checkout">
+          <input type="text" name="fullName" placeholder="Full name" required />
+          <input type="email" name="email" placeholder="Email" required />
+          <input type="tel" name="phone" placeholder="Phone" required />
+          <select id="leagueId" name="leagueId" required>
+            <option value="">Select a league</option>
+            <option value="downtown-7v7">Downtown 7v7 — Toronto — $129</option>
+            <option value="midtown-futsal">Midtown Futsal — Toronto — $99</option>
+            <option value="scarborough-11v11">Scarborough 11v11 — Toronto — $145</option>
+          </select>
+          <select name="skillLevel" required>
+            <option value="">Skill level</option>
+            <option>Recreational</option>
+            <option>Intermediate</option>
+            <option>Competitive</option>
+          </select>
+          <label class="checkbox">
+            <input type="checkbox" name="waiver" value="yes" required />
+            <span>I agree to the league waiver and code of conduct.</span>
+          </label>
+          <button class="btn primary" type="submit">Continue to checkout</button>
+        </form>
+      </div>
+    </main>
+  </div>
+  <script src="/script.js"></script>
+</body>
+</html>
