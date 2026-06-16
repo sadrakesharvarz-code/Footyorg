@@ -4,6 +4,7 @@
   "description": "��#\u0000 \u0000F\u0000o\u0000o\u0000t\u0000y\u0000o\u0000r\u0000g\u0000\r\u0000 \u0000#\u0000 \u0000F\u0000o\u0000o\u0000t\u0000y\u0000o\u0000r\u0000g\u0000\r\u0000 \u0000#\u0000 \u0000F\u0000o\u0000o\u0000t\u0000y\u0000o\u0000r\u0000g\u0000\r\u0000 \u0000#\u0000 \u0000F\u0000o\u0000o\u0000t\u0000y\u0000o\u0000r\u0000g\u0000\r\u0000 \u0000#\u0000 \u0000F\u0000o\u0000o\u0000t\u0000y\u0000o\u0000r\u0000g\u0000\r\u0000 \u0000",
   "main": "server.js",
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "accepts": "^2.0.0",
     "body-parser": "^2.2.2",
     "bytes": "^3.1.2",
