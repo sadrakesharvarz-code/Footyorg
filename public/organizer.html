@@ -24,6 +24,7 @@
     .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
     .small { font-size: 14px; }
     .message { margin-top: 12px; font-size: 14px; }
+    .readonly { background: #f3f4f6; }
   </style>
 </head>
 <body>
@@ -34,7 +35,7 @@
     </div>
     <div>
       <label for="organizerId" class="small">Organizer ID</label>
-      <input id="organizerId" type="number" value="1" min="1" style="width:120px;" />
+      <input id="organizerId" type="number" value="1" min="1" class="readonly" readonly />
     </div>
   </div>
 
@@ -56,8 +57,8 @@
         <label for="leagueSlug">Slug</label>
         <input id="leagueSlug" required placeholder="scarborough-11v11" />
 
-        <label for="leaguePrice">Price (cents)</label>
-        <input id="leaguePrice" type="number" required placeholder="14500" />
+        <label for="leaguePrice">Price (CAD)</label>
+        <input id="leaguePrice" type="number" step="0.01" required placeholder="145.00" />
 
         <button type="submit">Create League</button>
       </form>
