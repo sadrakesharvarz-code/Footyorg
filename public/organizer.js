@@ -11,6 +11,10 @@ function getOrganizerId() {
   return Number(organizerIdInput.value || 1);
 }
 
+function centsToCadLabel(cents) {
+  return (Number(cents || 0) / 100).toFixed(2);
+}
+
 function statusText(row) {
   const active = row.subscription_status === 'active';
   const onboarding = row.onboarding_complete;
@@ -48,7 +52,7 @@ async function loadDashboard() {
           <td>${l.id}</td>
           <td>${l.name}</td>
           <td>${l.slug}</td>
-          <td>${l.price}</td>
+          <td>CAD ${centsToCadLabel(l.price)}</td>
           <td>${l.status}</td>
           <td>${l.organizer_name}</td>
         </tr>
@@ -75,21 +79,10 @@ connectBtn.addEventListener('click', async () => {
       body: JSON.stringify({ organizerId: getOrganizerId() })
     });
 
-    if (res.redirected) {
-      window.location.href = res.url;
-      return;
-    }
+    if (!res.ok) throw new Error(await res.text());
 
-    if (res.status === 303) {
-      const location = res.headers.get('Location');
-      if (location) {
-        window.location.href = location;
-        return;
-      }
-    }
-
-    const text = await res.text();
-    throw new Error(text);
+    const data = await res.json();
+    window.location.href = data.url;
   } catch (err) {
     connectMessage.textContent = err.message;
     connectMessage.className = 'message error';
