@@ -107,6 +107,10 @@ app.get('/create', (req, res) => res.sendFile(path.join(__dirname, 'views', 'cre
 app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'views', 'success.html')));
 app.get('/cancel', (req, res) => res.sendFile(path.join(__dirname, 'views', 'cancel.html')));
 
+app.get('/organizer', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'organizer.html'));
+});
+
 app.get('/organizer/billing-success', (req, res) => {
   res.send('Organizer subscription active. You can now connect Stripe payouts.');
 });
