@@ -339,7 +339,7 @@ app.get('/organizer/connect/return', async (req, res) => {
       WHERE id = ${organizerId}
     `;
 
-    return res.send(`Stripe onboarding return complete. details_submitted=${account.details_submitted}`);
+    return res.sendFile(path.join(__dirname, 'public', 'organizer-return.html'));
   } catch (err) {
     console.error('Connect return error:', err.message);
     return res.status(500).send(err.message);

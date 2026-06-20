@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Organizer Connected</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f7fb;color:#111}
+    .card{background:#fff;padding:32px 28px;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.08);max-width:560px;width:calc(100% - 32px)}
+    h1{margin:0 0 12px;font-size:28px}
+    p{margin:0 0 18px;line-height:1.5;color:#4b5563}
+    .actions{display:flex;gap:12px;flex-wrap:wrap}
+    a{display:inline-block;text-decoration:none;padding:10px 16px;border-radius:10px}
+    .primary{background:#2563eb;color:#fff}
+    .secondary{background:#e5e7eb;color:#111827}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Stripe onboarding complete</h1>
+    <p>Your organizer account is connected and ready. You can go back to the dashboard to manage leagues and payouts.</p>
+    <div class="actions">
+      <a class="primary" href="/organizer">Go to dashboard</a>
+      <a class="secondary" href="/">Home</a>
+    </div>
+  </div>
+</body>
+</html>
