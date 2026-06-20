@@ -288,7 +288,7 @@ app.all('/organizer/connect/start', async (req, res) => {
       type: 'account_onboarding'
     });
 
-    return res.redirect(303, accountLink.url);
+    return res.json({ url: accountLink.url });
   } catch (err) {
     console.error('Connect onboarding error:', err.message);
     return res.status(500).send(err.message);

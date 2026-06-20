@@ -106,7 +106,7 @@ leagueForm.addEventListener('submit', async (e) => {
       organizerId: getOrganizerId(),
       name: document.getElementById('leagueName').value.trim(),
       slug: document.getElementById('leagueSlug').value.trim(),
-      price: Number(document.getElementById('leaguePrice').value)
+      price: Math.round(Number(document.getElementById('leaguePrice').value) * 100)
     };
 
     const res = await fetch('/organizer/leagues/create', {
