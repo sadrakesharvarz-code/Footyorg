@@ -110,7 +110,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 function requireOrganizerAuth(req, res, next) {
   if (!req.session?.organizerId) {
-    return res.redirect('/login');
+    return res.redirect('/');
   }
   next();
 }
@@ -160,7 +160,7 @@ app.post('/login', async (req, res) => {
 
 app.post('/logout', (req, res) => {
   req.session.destroy(() => {
-    res.redirect('/login');
+    res.redirect('/');
   });
 });
 
@@ -290,7 +290,20 @@ app.post('/organizer/subscribe', requireOrganizerAuth, async (req, res) => {
     return res.status(500).send(err.message);
   }
 });
+app.get('/auth/status', (req, res) => {
+  if (req.session?.organizerId) {
+    return res.json({
+      authenticated: true,
+      organizer: {
+        id: req.session.organizerId,
+        email: req.session.organizerEmail || null,
+        name: req.session.organizerName || null
+      }
+    });
+  }
 
+  return res.status(401).json({ authenticated: false });
+});
 app.all('/organizer/connect/start', requireOrganizerAuth, async (req, res) => {
   try {
     const organizerId = getSessionOrganizerId(req);
