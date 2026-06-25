@@ -1,6 +1,7 @@
 require('dotenv').config();
 const path = require('path');
 const express = require('express');
+const session = require('express-session');
 const Stripe = require('stripe');
 const { neon } = require('@neondatabase/serverless');
 
@@ -11,10 +12,6 @@ const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 const sql = neon(process.env.DATABASE_URL);
-
-function getOrganizerId(req) {
-  return req.body?.organizerId || req.query?.organizerId || null;
-}
 
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -30,26 +27,26 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 
   try {
     if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
+      const checkoutSession = event.data.object;
 
-      if (session.mode === 'subscription' && session.metadata?.type === 'organizer_subscription') {
+      if (checkoutSession.mode === 'subscription' && checkoutSession.metadata?.type === 'organizer_subscription') {
         await sql`
           UPDATE organizers
           SET
-            stripe_customer_id = ${session.customer || null},
-            stripe_subscription_id = ${session.subscription || null},
+            stripe_customer_id = ${checkoutSession.customer || null},
+            stripe_subscription_id = ${checkoutSession.subscription || null},
             subscription_status = 'active'
-          WHERE id = ${session.metadata.organizerId}
+          WHERE id = ${checkoutSession.metadata.organizerId}
         `;
 
         console.log('✅ Organizer subscription activated');
-        console.log('Organizer ID:', session.metadata.organizerId);
+        console.log('Organizer ID:', checkoutSession.metadata.organizerId);
       }
 
-      if (session.mode === 'payment' && session.metadata?.type === 'league_registration') {
+      if (checkoutSession.mode === 'payment' && checkoutSession.metadata?.type === 'league_registration') {
         const email =
-          session.customer_details?.email ||
-          session.customer_email ||
+          checkoutSession.customer_details?.email ||
+          checkoutSession.customer_email ||
           '';
 
         await sql`
@@ -66,26 +63,26 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
             amount
           )
           VALUES (
-            ${session.id},
+            ${checkoutSession.id},
             ${event.id},
-            ${session.metadata?.organizerId || null},
-            ${session.metadata?.leagueDbId || null},
+            ${checkoutSession.metadata?.organizerId || null},
+            ${checkoutSession.metadata?.leagueDbId || null},
             ${email},
-            ${session.metadata?.fullName || ''},
-            ${session.metadata?.leagueSlug || ''},
-            ${session.metadata?.skillLevel || ''},
-            ${session.payment_status || 'paid'},
-            ${session.amount_total || 0}
+            ${checkoutSession.metadata?.fullName || ''},
+            ${checkoutSession.metadata?.leagueSlug || ''},
+            ${checkoutSession.metadata?.skillLevel || ''},
+            ${checkoutSession.payment_status || 'paid'},
+            ${checkoutSession.amount_total || 0}
           )
           ON CONFLICT (stripe_event_id) DO NOTHING
         `;
 
         console.log('✅ Player registration saved to database');
-        console.log('Session ID:', session.id);
+        console.log('Session ID:', checkoutSession.id);
         console.log('Customer email:', email);
-        console.log('Organizer ID:', session.metadata?.organizerId);
-        console.log('League DB ID:', session.metadata?.leagueDbId);
-        console.log('League slug:', session.metadata?.leagueSlug);
+        console.log('Organizer ID:', checkoutSession.metadata?.organizerId);
+        console.log('League DB ID:', checkoutSession.metadata?.leagueDbId);
+        console.log('League slug:', checkoutSession.metadata?.leagueSlug);
       }
     }
 
@@ -98,7 +95,29 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: false,
+    maxAge: 1000 * 60 * 60 * 24 * 7
+  }
+}));
 app.use(express.static(path.join(__dirname, 'public')));
+
+function requireOrganizerAuth(req, res, next) {
+  if (!req.session?.organizerId) {
+    return res.redirect('/login');
+  }
+  next();
+}
+
+function getSessionOrganizerId(req) {
+  return req.session?.organizerId || null;
+}
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'views', 'login.html')));
@@ -107,44 +126,42 @@ app.get('/create', (req, res) => res.sendFile(path.join(__dirname, 'views', 'cre
 app.get('/success', (req, res) => res.sendFile(path.join(__dirname, 'views', 'success.html')));
 app.get('/cancel', (req, res) => res.sendFile(path.join(__dirname, 'views', 'cancel.html')));
 
-app.get('/organizer', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'organizer.html'));
-});
-
-app.get('/organizer/billing-success', (req, res) => {
-  res.send('Organizer subscription active. You can now connect Stripe payouts.');
-});
-
-app.get('/organizer/billing-cancel', (req, res) => {
-  res.send('Organizer subscription checkout cancelled.');
-});
-
-app.get('/organizer/dashboard', async (req, res) => {
+app.post('/login', async (req, res) => {
   try {
-    const organizers = await sql`
-      SELECT id, email, name, subscription_status, stripe_account_id, onboarding_complete
+    const email = String(req.body?.email || '').trim().toLowerCase();
+
+    if (!email) {
+      return res.status(400).send('Email is required.');
+    }
+
+    const rows = await sql`
+      SELECT id, email, name
       FROM organizers
-      ORDER BY created_at DESC
-      LIMIT 20
+      WHERE lower(email) = ${email}
+      LIMIT 1
     `;
 
-    const leagues = await sql`
-      SELECT l.id, l.organizer_id, l.name, l.slug, l.price, l.status, o.name AS organizer_name
-      FROM leagues l
-      JOIN organizers o ON o.id = l.organizer_id
-      ORDER BY l.created_at DESC
-      LIMIT 50
-    `;
+    const organizer = rows[0];
 
-    return res.json({ organizers, leagues });
+    if (!organizer) {
+      return res.status(404).send('No organizer found with that email.');
+    }
+
+    req.session.organizerId = organizer.id;
+    req.session.organizerEmail = organizer.email;
+    req.session.organizerName = organizer.name;
+
+    return res.redirect('/organizer');
   } catch (err) {
-    console.error('Dashboard error:', err.message);
-    return res.status(500).send(err.message);
+    console.error('Login error:', err.message);
+    return res.status(500).send('Login failed.');
   }
 });
 
-app.post('/login', (req, res) => {
-  res.redirect('/success');
+app.post('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.redirect('/login');
+  });
 });
 
 app.post('/create', (req, res) => {
@@ -159,10 +176,12 @@ app.post('/organizer/signup', async (req, res) => {
       return res.status(400).send('Name and email are required.');
     }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+
     const existing = await sql`
       SELECT id
       FROM organizers
-      WHERE email = ${email}
+      WHERE lower(email) = ${normalizedEmail}
       LIMIT 1
     `;
 
@@ -172,7 +191,7 @@ app.post('/organizer/signup', async (req, res) => {
 
     const rows = await sql`
       INSERT INTO organizers (name, email)
-      VALUES (${name}, ${email})
+      VALUES (${name}, ${normalizedEmail})
       RETURNING id, name, email
     `;
 
@@ -186,13 +205,50 @@ app.post('/organizer/signup', async (req, res) => {
   }
 });
 
-app.post('/organizer/subscribe', async (req, res) => {
-  try {
-    const organizerId = getOrganizerId(req);
+app.get('/organizer', requireOrganizerAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'organizer.html'));
+});
 
-    if (!organizerId) {
-      return res.status(400).send('Organizer ID is required.');
-    }
+app.get('/organizer/billing-success', requireOrganizerAuth, (req, res) => {
+  res.send('Organizer subscription active. You can now connect Stripe payouts.');
+});
+
+app.get('/organizer/billing-cancel', requireOrganizerAuth, (req, res) => {
+  res.send('Organizer subscription checkout cancelled.');
+});
+
+app.get('/organizer/dashboard', requireOrganizerAuth, async (req, res) => {
+  try {
+    const organizerId = getSessionOrganizerId(req);
+
+    const organizerRows = await sql`
+      SELECT id, email, name, subscription_status, stripe_account_id, onboarding_complete
+      FROM organizers
+      WHERE id = ${organizerId}
+      LIMIT 1
+    `;
+
+    const leagues = await sql`
+      SELECT l.id, l.organizer_id, l.name, l.slug, l.price, l.status, o.name AS organizer_name
+      FROM leagues l
+      JOIN organizers o ON o.id = l.organizer_id
+      WHERE l.organizer_id = ${organizerId}
+      ORDER BY l.created_at DESC
+    `;
+
+    return res.json({
+      organizer: organizerRows[0] || null,
+      leagues
+    });
+  } catch (err) {
+    console.error('Dashboard error:', err.message);
+    return res.status(500).send(err.message);
+  }
+});
+
+app.post('/organizer/subscribe', requireOrganizerAuth, async (req, res) => {
+  try {
+    const organizerId = getSessionOrganizerId(req);
 
     if (!process.env.STRIPE_ORGANIZER_PRICE_ID) {
       return res.status(500).send('Missing STRIPE_ORGANIZER_PRICE_ID env var.');
@@ -211,7 +267,7 @@ app.post('/organizer/subscribe', async (req, res) => {
       return res.status(404).send('Organizer not found.');
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer_email: organizer.email,
       line_items: [
@@ -228,20 +284,16 @@ app.post('/organizer/subscribe', async (req, res) => {
       cancel_url: `${BASE_URL}/organizer/billing-cancel`
     });
 
-    return res.redirect(303, session.url);
+    return res.redirect(303, checkoutSession.url);
   } catch (err) {
     console.error('Organizer subscription error:', err.message);
     return res.status(500).send(err.message);
   }
 });
 
-app.all('/organizer/connect/start', async (req, res) => {
+app.all('/organizer/connect/start', requireOrganizerAuth, async (req, res) => {
   try {
-    const organizerId = getOrganizerId(req);
-
-    if (!organizerId) {
-      return res.status(400).send('Organizer ID is required.');
-    }
+    const organizerId = getSessionOrganizerId(req);
 
     const rows = await sql`
       SELECT id, email, name, stripe_account_id, subscription_status
@@ -283,8 +335,8 @@ app.all('/organizer/connect/start', async (req, res) => {
 
     const accountLink = await stripe.accountLinks.create({
       account: stripeAccountId,
-      refresh_url: `${BASE_URL}/organizer/connect/refresh?organizerId=${organizer.id}`,
-      return_url: `${BASE_URL}/organizer/connect/return?organizerId=${organizer.id}`,
+      refresh_url: `${BASE_URL}/organizer/connect/refresh`,
+      return_url: `${BASE_URL}/organizer/connect/return`,
       type: 'account_onboarding'
     });
 
@@ -295,28 +347,18 @@ app.all('/organizer/connect/start', async (req, res) => {
   }
 });
 
-app.get('/organizer/connect/refresh', async (req, res) => {
+app.get('/organizer/connect/refresh', requireOrganizerAuth, async (req, res) => {
   try {
-    const organizerId = getOrganizerId(req);
-
-    if (!organizerId) {
-      return res.status(400).send('Organizer ID is required.');
-    }
-
-    return res.redirect(303, `/organizer/connect/start?organizerId=${organizerId}`);
+    return res.redirect(303, '/organizer/connect/start');
   } catch (err) {
     console.error('Connect refresh error:', err.message);
     return res.status(500).send(err.message);
   }
 });
 
-app.get('/organizer/connect/return', async (req, res) => {
+app.get('/organizer/connect/return', requireOrganizerAuth, async (req, res) => {
   try {
-    const organizerId = getOrganizerId(req);
-
-    if (!organizerId) {
-      return res.status(400).send('Organizer ID is required.');
-    }
+    const organizerId = getSessionOrganizerId(req);
 
     const rows = await sql`
       SELECT id, stripe_account_id
@@ -346,12 +388,13 @@ app.get('/organizer/connect/return', async (req, res) => {
   }
 });
 
-app.post('/organizer/leagues/create', async (req, res) => {
+app.post('/organizer/leagues/create', requireOrganizerAuth, async (req, res) => {
   try {
-    const { organizerId, name, slug, price } = req.body;
+    const organizerId = getSessionOrganizerId(req);
+    const { name, slug, price } = req.body;
 
-    if (!organizerId || !name || !slug || !price) {
-      return res.status(400).send('organizerId, name, slug, and price are required.');
+    if (!name || !slug || !price) {
+      return res.status(400).send('name, slug, and price are required.');
     }
 
     const organizerRows = await sql`
@@ -429,7 +472,7 @@ app.post('/checkout', async (req, res) => {
       return res.status(400).send('Organizer Stripe payouts are not ready yet.');
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
       customer_email: email,
@@ -462,7 +505,7 @@ app.post('/checkout', async (req, res) => {
       cancel_url: `${BASE_URL}/cancel`
     });
 
-    return res.redirect(303, session.url);
+    return res.redirect(303, checkoutSession.url);
   } catch (err) {
     console.error('Checkout error:', err.message);
     return res.status(500).send(err.message);

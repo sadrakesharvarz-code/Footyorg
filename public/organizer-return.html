@@ -3,25 +3,68 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Organizer Connected</title>
+  <title>Stripe Payouts Connected</title>
   <style>
-    body{font-family:Arial,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f7fb;color:#111}
-    .card{background:#fff;padding:32px 28px;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.08);max-width:560px;width:calc(100% - 32px)}
-    h1{margin:0 0 12px;font-size:28px}
-    p{margin:0 0 18px;line-height:1.5;color:#4b5563}
-    .actions{display:flex;gap:12px;flex-wrap:wrap}
-    a{display:inline-block;text-decoration:none;padding:10px 16px;border-radius:10px}
-    .primary{background:#2563eb;color:#fff}
-    .secondary{background:#e5e7eb;color:#111827}
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, Arial, sans-serif;
+      background: #f6f4ef;
+      color: #1f1d1a;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(620px, 100%);
+      background: #fff;
+      border: 1px solid #ded8d0;
+      border-radius: 24px;
+      padding: 32px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.06);
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 30px;
+      letter-spacing: -0.03em;
+    }
+    p {
+      margin: 0 0 20px;
+      color: #6a6762;
+      line-height: 1.6;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    a {
+      text-decoration: none;
+      height: 44px;
+      padding: 0 18px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      border: 1px solid #ded8d0;
+      color: #1f1d1a;
+      background: #fff;
+    }
+    .primary {
+      background: #0d6b73;
+      color: #fff;
+      border-color: #0d6b73;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Stripe onboarding complete</h1>
-    <p>Your organizer account is connected and ready. You can go back to the dashboard to manage leagues and payouts.</p>
+    <h1>Stripe payouts connected</h1>
+    <p>Your organizer account is ready. Players can now pay for leagues and payouts can be sent to this Stripe account.</p>
     <div class="actions">
-      <a class="primary" href="/organizer">Go to dashboard</a>
-      <a class="secondary" href="/">Home</a>
+      <a class="primary" href="/organizer">Back to dashboard</a>
+      <a href="/">Go home</a>
     </div>
   </div>
 </body>

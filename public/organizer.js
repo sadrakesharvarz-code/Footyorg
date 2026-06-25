@@ -1,15 +1,15 @@
-const organizerIdInput = document.getElementById('organizerId');
+
 const organizerStatus = document.getElementById('organizerStatus');
 const leaguesTable = document.getElementById('leaguesTable');
 const refreshBtn = document.getElementById('refreshBtn');
 const connectBtn = document.getElementById('connectBtn');
 const connectMessage = document.getElementById('connectMessage');
+const payoutStatus = document.getElementById('payoutStatus');
 const leagueForm = document.getElementById('leagueForm');
 const leagueMessage = document.getElementById('leagueMessage');
-
-function getOrganizerId() {
-  return Number(organizerIdInput.value || 1);
-}
+const leagueNameInput = document.getElementById('leagueName');
+const leagueSlugInput = document.getElementById('leagueSlug');
+const leaguePriceInput = document.getElementById('leaguePrice');
 
 function centsToCadLabel(cents) {
   return (Number(cents || 0) / 100).toFixed(2);
@@ -18,6 +18,7 @@ function centsToCadLabel(cents) {
 function statusText(row) {
   const active = row.subscription_status === 'active';
   const onboarding = row.onboarding_complete;
+
   return `
     <div><strong>ID:</strong> ${row.id}</div>
     <div><strong>Name:</strong> ${row.name || ''}</div>
@@ -28,26 +29,62 @@ function statusText(row) {
   `;
 }
 
+function redirectToLogin() {
+  window.location.href = '/login';
+}
+
+async function parseError(res) {
+  try {
+    const text = await res.text();
+    return text || `Request failed with status ${res.status}`;
+  } catch {
+    return `Request failed with status ${res.status}`;
+  }
+}
+
 async function loadDashboard() {
-  const id = getOrganizerId();
   organizerStatus.textContent = 'Loading...';
   leaguesTable.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
 
   try {
-    const res = await fetch(`/organizer/dashboard?organizerId=${id}`);
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
+    const res = await fetch('/organizer/dashboard', {
+      method: 'GET',
+      credentials: 'same-origin'
+    });
 
-    const organizer = data.organizers.find(o => String(o.id) === String(id)) || data.organizers[0];
+    if (res.status === 401) {
+      redirectToLogin();
+      return;
+    }
+
+    if (!res.ok) {
+      throw new Error(await parseError(res));
+    }
+
+    const data = await res.json();
+    const organizer = data.organizer || null;
+    const leagues = Array.isArray(data.leagues) ? data.leagues : [];
+
 
     if (organizer) {
       organizerStatus.innerHTML = statusText(organizer);
+
+      const ready =
+        organizer.subscription_status === 'active' &&
+        organizer.onboarding_complete;
+
+      connectBtn.style.display = ready ? 'none' : 'inline-block';
+      connectMessage.textContent = '';
+      connectMessage.className = 'message';
+      payoutStatus.style.display = ready ? 'block' : 'none';
     } else {
       organizerStatus.textContent = 'Organizer not found.';
+      connectBtn.style.display = 'inline-block';
+      payoutStatus.style.display = 'none';
     }
 
-    if (data.leagues.length) {
-      leaguesTable.innerHTML = data.leagues.map(l => `
+    if (leagues.length) {
+      leaguesTable.innerHTML = leagues.map((l) => `
         <tr>
           <td>${l.id}</td>
           <td>${l.name}</td>
@@ -76,12 +113,25 @@ connectBtn.addEventListener('click', async () => {
     const res = await fetch('/organizer/connect/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ organizerId: getOrganizerId() })
+      credentials: 'same-origin',
+      body: JSON.stringify({})
     });
 
-    if (!res.ok) throw new Error(await res.text());
+    if (res.status === 401) {
+      redirectToLogin();
+      return;
+    }
+
+    if (!res.ok) {
+      throw new Error(await parseError(res));
+    }
 
     const data = await res.json();
+
+    if (!data.url) {
+      throw new Error('Stripe onboarding link was not returned.');
+    }
+
     window.location.href = data.url;
   } catch (err) {
     connectMessage.textContent = err.message;
@@ -96,20 +146,28 @@ leagueForm.addEventListener('submit', async (e) => {
 
   try {
     const payload = {
-      organizerId: getOrganizerId(),
-      name: document.getElementById('leagueName').value.trim(),
-      slug: document.getElementById('leagueSlug').value.trim(),
-      price: Math.round(Number(document.getElementById('leaguePrice').value) * 100)
+      name: leagueNameInput.value.trim(),
+      slug: leagueSlugInput.value.trim(),
+      price: Math.round(Number(leaguePriceInput.value) * 100)
     };
 
     const res = await fetch('/organizer/leagues/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify(payload)
     });
 
+    if (res.status === 401) {
+      redirectToLogin();
+      return;
+    }
+
     const text = await res.text();
-    if (!res.ok) throw new Error(text);
+
+    if (!res.ok) {
+      throw new Error(text || 'Failed to create league.');
+    }
 
     const data = JSON.parse(text);
     leagueMessage.textContent = `Created: ${data.league.name} (${data.league.slug})`;
