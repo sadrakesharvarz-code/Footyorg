@@ -1,7 +1,8 @@
-
 const organizerStatus = document.getElementById('organizerStatus');
 const leaguesTable = document.getElementById('leaguesTable');
 const refreshBtn = document.getElementById('refreshBtn');
+const subscribeForm = document.getElementById('subscribeForm');
+const subscribeBtn = document.getElementById('subscribeBtn');
 const connectBtn = document.getElementById('connectBtn');
 const connectMessage = document.getElementById('connectMessage');
 const payoutStatus = document.getElementById('payoutStatus');
@@ -10,6 +11,8 @@ const leagueMessage = document.getElementById('leagueMessage');
 const leagueNameInput = document.getElementById('leagueName');
 const leagueSlugInput = document.getElementById('leagueSlug');
 const leaguePriceInput = document.getElementById('leaguePrice');
+
+let currentOrganizer = null;
 
 function centsToCadLabel(cents) {
   return (Number(cents || 0) / 100).toFixed(2);
@@ -42,6 +45,50 @@ async function parseError(res) {
   }
 }
 
+function isHtmlResponse(res) {
+  const contentType = res.headers.get('content-type') || '';
+  return contentType.includes('text/html');
+}
+
+function resetActions() {
+  subscribeForm.style.display = 'none';
+  connectBtn.style.display = 'none';
+  payoutStatus.style.display = 'none';
+  connectMessage.textContent = '';
+  connectMessage.className = 'message';
+}
+
+function updateActionState(organizer) {
+  resetActions();
+
+  if (!organizer) {
+    connectMessage.textContent = 'Organizer not found.';
+    connectMessage.className = 'message error';
+    return;
+  }
+
+  const subscriptionActive = organizer.subscription_status === 'active';
+  const onboardingComplete = !!organizer.onboarding_complete;
+
+  if (!subscriptionActive) {
+    subscribeForm.style.display = 'inline-block';
+    connectMessage.textContent = 'Activate your subscription first. Once it is active, you can connect Stripe payouts.';
+    connectMessage.className = 'message muted';
+    return;
+  }
+
+  if (!onboardingComplete) {
+    connectBtn.style.display = 'inline-block';
+    connectMessage.textContent = 'Your subscription is active. Next step: connect Stripe payouts.';
+    connectMessage.className = 'message muted';
+    return;
+  }
+
+  payoutStatus.style.display = 'block';
+  connectMessage.textContent = 'Subscription and Stripe payouts are fully set up.';
+  connectMessage.className = 'message ok';
+}
+
 async function loadDashboard() {
   organizerStatus.textContent = 'Loading...';
   leaguesTable.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
@@ -52,7 +99,7 @@ async function loadDashboard() {
       credentials: 'same-origin'
     });
 
-    if (res.status === 401) {
+    if (res.status === 401 || isHtmlResponse(res)) {
       redirectToLogin();
       return;
     }
@@ -65,22 +112,14 @@ async function loadDashboard() {
     const organizer = data.organizer || null;
     const leagues = Array.isArray(data.leagues) ? data.leagues : [];
 
+    currentOrganizer = organizer;
 
     if (organizer) {
       organizerStatus.innerHTML = statusText(organizer);
-
-      const ready =
-        organizer.subscription_status === 'active' &&
-        organizer.onboarding_complete;
-
-      connectBtn.style.display = ready ? 'none' : 'inline-block';
-      connectMessage.textContent = '';
-      connectMessage.className = 'message';
-      payoutStatus.style.display = ready ? 'block' : 'none';
+      updateActionState(organizer);
     } else {
       organizerStatus.textContent = 'Organizer not found.';
-      connectBtn.style.display = 'inline-block';
-      payoutStatus.style.display = 'none';
+      updateActionState(null);
     }
 
     if (leagues.length) {
@@ -105,7 +144,24 @@ async function loadDashboard() {
 
 refreshBtn.addEventListener('click', loadDashboard);
 
+subscribeForm.addEventListener('submit', () => {
+  subscribeBtn.disabled = true;
+  subscribeBtn.textContent = 'Starting subscription...';
+});
+
 connectBtn.addEventListener('click', async () => {
+  if (!currentOrganizer) {
+    connectMessage.textContent = 'Organizer data is not loaded yet.';
+    connectMessage.className = 'message error';
+    return;
+  }
+
+  if (currentOrganizer.subscription_status !== 'active') {
+    connectMessage.textContent = 'Activate your subscription before connecting Stripe payouts.';
+    connectMessage.className = 'message error';
+    return;
+  }
+
   connectMessage.textContent = 'Starting Stripe Connect...';
   connectMessage.className = 'message muted';
 
@@ -117,7 +173,7 @@ connectBtn.addEventListener('click', async () => {
       body: JSON.stringify({})
     });
 
-    if (res.status === 401) {
+    if (res.status === 401 || isHtmlResponse(res)) {
       redirectToLogin();
       return;
     }
@@ -145,6 +201,18 @@ leagueForm.addEventListener('submit', async (e) => {
   leagueMessage.className = 'message muted';
 
   try {
+    if (!currentOrganizer) {
+      throw new Error('Organizer not loaded.');
+    }
+
+    if (currentOrganizer.subscription_status !== 'active') {
+      throw new Error('Activate your subscription before creating leagues.');
+    }
+
+    if (!currentOrganizer.onboarding_complete) {
+      throw new Error('Connect Stripe payouts before creating leagues.');
+    }
+
     const payload = {
       name: leagueNameInput.value.trim(),
       slug: leagueSlugInput.value.trim(),
@@ -158,18 +226,16 @@ leagueForm.addEventListener('submit', async (e) => {
       body: JSON.stringify(payload)
     });
 
-    if (res.status === 401) {
+    if (res.status === 401 || isHtmlResponse(res)) {
       redirectToLogin();
       return;
     }
 
-    const text = await res.text();
-
     if (!res.ok) {
-      throw new Error(text || 'Failed to create league.');
+      throw new Error(await parseError(res));
     }
 
-    const data = JSON.parse(text);
+    const data = await res.json();
     leagueMessage.textContent = `Created: ${data.league.name} (${data.league.slug})`;
     leagueMessage.className = 'message ok';
     leagueForm.reset();

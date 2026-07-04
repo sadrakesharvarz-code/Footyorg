@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Create a league • FootyOrg</title>
+  <title>Become an organizer • FootyOrg</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -15,26 +15,36 @@
         <a class="btn" href="/join">Join a league</a>
       </nav>
     </header>
+
     <main class="page">
       <div class="card">
-        <h1>Create a league</h1>
-        <p>Just the basics — you can edit everything later.</p>
-        <form class="form" method="POST" action="/create">
-          <input type="text" name="leagueName" placeholder="League name" required />
-          <div class="row">
-            <input type="text" name="city" placeholder="City" required />
-            <select name="format" required>
-              <option value="">Format</option>
-              <option>7v7</option>
-              <option>11v11</option>
-              <option>Futsal</option>
-            </select>
-          </div>
-          <div class="row">
-            <input type="date" name="startDate" required />
-            <input type="number" name="price" placeholder="Price per player ($)" required />
-          </div>
-          <button class="btn primary" type="submit">Create league</button>
+        <h1>Become an organizer</h1>
+        <p>Create your organizer account to start managing leagues and payouts.</p>
+
+        <form class="form" method="POST" action="/organizer/signup">
+          <input
+            type="text"
+            name="name"
+            placeholder="Organizer or club name"
+            required
+          />
+
+          <input
+            type="email"
+            name="email"
+            placeholder="Email address"
+            required
+          />
+
+          <input
+            type="password"
+            name="password"
+            placeholder="Create a password (minimum 8 characters)"
+            minlength="8"
+            required
+          />
+
+          <button class="btn primary" type="submit">Create organizer account</button>
         </form>
       </div>
     </main>

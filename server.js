@@ -1,4 +1,6 @@
 require('dotenv').config();
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const path = require('path');
 const express = require('express');
 const session = require('express-session');
@@ -12,6 +14,84 @@ const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 const sql = neon(process.env.DATABASE_URL);
+
+const CONNECT_STATE_SECRET =
+  process.env.CONNECT_STATE_SECRET ||
+  process.env.SESSION_SECRET ||
+  'dev-connect-state-secret-change-me';
+
+function base64urlEncode(input) {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function base64urlDecode(input) {
+  let normalized = String(input).replace(/-/g, '+').replace(/_/g, '/');
+  while (normalized.length % 4) normalized += '=';
+  return Buffer.from(normalized, 'base64').toString('utf8');
+}
+
+function signValue(value) {
+  return crypto
+    .createHmac('sha256', CONNECT_STATE_SECRET)
+    .update(value)
+    .digest('hex');
+}
+
+function createConnectStateToken(organizerId) {
+  const payload = JSON.stringify({
+    organizerId: Number(organizerId),
+    exp: Date.now() + 1000 * 60 * 30
+  });
+
+  const encodedPayload = base64urlEncode(payload);
+  const signature = signValue(encodedPayload);
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifyConnectStateToken(token) {
+  if (!token || typeof token !== 'string' || !token.includes('.')) {
+    return null;
+  }
+
+  const [encodedPayload, providedSignature] = token.split('.');
+
+  if (!encodedPayload || !providedSignature) {
+    return null;
+  }
+
+  const expectedSignature = signValue(encodedPayload);
+  const providedBuffer = Buffer.from(providedSignature, 'utf8');
+  const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+
+  if (
+    providedBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+  ) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(base64urlDecode(encodedPayload));
+
+    if (!payload?.organizerId || !payload?.exp) {
+      return null;
+    }
+
+    if (Date.now() > Number(payload.exp)) {
+      return null;
+    }
+
+    return {
+      organizerId: Number(payload.organizerId)
+    };
+  } catch {
+    return null;
+  }
+}
 
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -38,9 +118,6 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
             subscription_status = 'active'
           WHERE id = ${checkoutSession.metadata.organizerId}
         `;
-
-        console.log('✅ Organizer subscription activated');
-        console.log('Organizer ID:', checkoutSession.metadata.organizerId);
       }
 
       if (checkoutSession.mode === 'payment' && checkoutSession.metadata?.type === 'league_registration') {
@@ -76,13 +153,6 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
           )
           ON CONFLICT (stripe_event_id) DO NOTHING
         `;
-
-        console.log('✅ Player registration saved to database');
-        console.log('Session ID:', checkoutSession.id);
-        console.log('Customer email:', email);
-        console.log('Organizer ID:', checkoutSession.metadata?.organizerId);
-        console.log('League DB ID:', checkoutSession.metadata?.leagueDbId);
-        console.log('League slug:', checkoutSession.metadata?.leagueSlug);
       }
     }
 
@@ -95,24 +165,39 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
+app.set('trust proxy', 1);
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
   resave: false,
   saveUninitialized: false,
+  proxy: process.env.NODE_ENV === 'production',
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false,
+    secure: process.env.NODE_ENV === 'production',
     maxAge: 1000 * 60 * 60 * 24 * 7
   }
 }));
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 function requireOrganizerAuth(req, res, next) {
-  if (!req.session?.organizerId) {
-    return res.redirect('/');
+  if (req.session?.organizerId) {
+    return next();
   }
-  next();
+
+  const wantsJson =
+    req.xhr ||
+    (req.headers.accept || '').includes('application/json') ||
+    (req.headers['content-type'] || '').includes('application/json');
+
+  if (wantsJson) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  return res.redirect('/login');
 }
 
 function getSessionOrganizerId(req) {
@@ -129,13 +214,14 @@ app.get('/cancel', (req, res) => res.sendFile(path.join(__dirname, 'views', 'can
 app.post('/login', async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
 
-    if (!email) {
-      return res.status(400).send('Email is required.');
+    if (!email || !password) {
+      return res.redirect('/login?error=Please%20enter%20your%20email%20and%20password');
     }
 
     const rows = await sql`
-      SELECT id, email, name
+      SELECT id, email, name, password_hash
       FROM organizers
       WHERE lower(email) = ${email}
       LIMIT 1
@@ -143,8 +229,14 @@ app.post('/login', async (req, res) => {
 
     const organizer = rows[0];
 
-    if (!organizer) {
-      return res.status(404).send('No organizer found with that email.');
+    if (!organizer || !organizer.password_hash) {
+      return res.redirect('/login?error=Invalid%20email%20or%20password');
+    }
+
+    const passwordOk = await bcrypt.compare(password, organizer.password_hash);
+
+    if (!passwordOk) {
+      return res.redirect('/login?error=Invalid%20email%20or%20password');
     }
 
     req.session.organizerId = organizer.id;
@@ -154,7 +246,7 @@ app.post('/login', async (req, res) => {
     return res.redirect('/organizer');
   } catch (err) {
     console.error('Login error:', err.message);
-    return res.status(500).send('Login failed.');
+    return res.redirect('/login?error=Login%20failed');
   }
 });
 
@@ -170,18 +262,22 @@ app.post('/create', (req, res) => {
 
 app.post('/organizer/signup', async (req, res) => {
   try {
-    const { name, email } = req.body;
+    const name = String(req.body?.name || '').trim();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
 
-    if (!name || !email) {
-      return res.status(400).send('Name and email are required.');
+    if (!name || !email || !password) {
+      return res.status(400).send('Name, email, and password are required.');
     }
 
-    const normalizedEmail = String(email).trim().toLowerCase();
+    if (password.length < 8) {
+      return res.status(400).send('Password must be at least 8 characters.');
+    }
 
     const existing = await sql`
       SELECT id
       FROM organizers
-      WHERE lower(email) = ${normalizedEmail}
+      WHERE lower(email) = ${email}
       LIMIT 1
     `;
 
@@ -189,19 +285,24 @@ app.post('/organizer/signup', async (req, res) => {
       return res.status(400).send('Organizer with this email already exists.');
     }
 
+    const passwordHash = await bcrypt.hash(password, 12);
+
     const rows = await sql`
-      INSERT INTO organizers (name, email)
-      VALUES (${name}, ${normalizedEmail})
+      INSERT INTO organizers (name, email, password_hash)
+      VALUES (${name}, ${email}, ${passwordHash})
       RETURNING id, name, email
     `;
 
-    return res.json({
-      message: 'Organizer created successfully',
-      organizer: rows[0]
-    });
+    const organizer = rows[0];
+
+    req.session.organizerId = organizer.id;
+    req.session.organizerEmail = organizer.email;
+    req.session.organizerName = organizer.name;
+
+    return res.redirect('/organizer');
   } catch (err) {
     console.error('Organizer signup error:', err.message);
-    return res.status(500).send(err.message);
+    return res.status(500).send('Organizer signup failed.');
   }
 });
 
@@ -210,11 +311,129 @@ app.get('/organizer', requireOrganizerAuth, (req, res) => {
 });
 
 app.get('/organizer/billing-success', requireOrganizerAuth, (req, res) => {
-  res.send('Organizer subscription active. You can now connect Stripe payouts.');
+  return res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Subscription Activated</title>
+      <meta http-equiv="refresh" content="3;url=/organizer" />
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          background: #f7f6f2;
+          color: #28251d;
+          min-height: 100vh;
+          margin: 0;
+          display: grid;
+          place-items: center;
+          padding: 24px;
+        }
+        .card {
+          width: 100%;
+          max-width: 640px;
+          background: #fff;
+          border: 1px solid #ddd7cf;
+          border-radius: 20px;
+          padding: 32px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+          text-align: center;
+        }
+        h1 {
+          margin: 0 0 12px;
+          font-size: 2rem;
+        }
+        p {
+          margin: 0 0 14px;
+          line-height: 1.6;
+          color: #5c5a54;
+        }
+        a {
+          display: inline-block;
+          margin-top: 10px;
+          background: #0f7c82;
+          color: white;
+          text-decoration: none;
+          padding: 12px 18px;
+          border-radius: 999px;
+          font-weight: 600;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>Subscription activated</h1>
+        <p>Your organizer subscription was successful.</p>
+        <p>You’ll be redirected back to your dashboard in a few seconds.</p>
+        <a href="/organizer">Return to dashboard</a>
+      </div>
+    </body>
+    </html>
+  `);
 });
 
 app.get('/organizer/billing-cancel', requireOrganizerAuth, (req, res) => {
-  res.send('Organizer subscription checkout cancelled.');
+  return res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Subscription Cancelled</title>
+      <meta http-equiv="refresh" content="3;url=/organizer" />
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          background: #f7f6f2;
+          color: #28251d;
+          min-height: 100vh;
+          margin: 0;
+          display: grid;
+          place-items: center;
+          padding: 24px;
+        }
+        .card {
+          width: 100%;
+          max-width: 640px;
+          background: #fff;
+          border: 1px solid #ddd7cf;
+          border-radius: 20px;
+          padding: 32px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+          text-align: center;
+        }
+        h1 {
+          margin: 0 0 12px;
+          font-size: 2rem;
+        }
+        p {
+          margin: 0 0 14px;
+          line-height: 1.6;
+          color: #5c5a54;
+        }
+        a {
+          display: inline-block;
+          margin-top: 10px;
+          background: #0f7c82;
+          color: white;
+          text-decoration: none;
+          padding: 12px 18px;
+          border-radius: 999px;
+          font-weight: 600;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>Subscription cancelled</h1>
+        <p>Your subscription checkout was cancelled.</p>
+        <p>You’ll be redirected back to your dashboard in a few seconds.</p>
+        <a href="/organizer">Return to dashboard</a>
+      </div>
+    </body>
+    </html>
+  `);
 });
 
 app.get('/organizer/dashboard', requireOrganizerAuth, async (req, res) => {
@@ -290,6 +509,7 @@ app.post('/organizer/subscribe', requireOrganizerAuth, async (req, res) => {
     return res.status(500).send(err.message);
   }
 });
+
 app.get('/auth/status', (req, res) => {
   if (req.session?.organizerId) {
     return res.json({
@@ -304,6 +524,7 @@ app.get('/auth/status', (req, res) => {
 
   return res.status(401).json({ authenticated: false });
 });
+
 app.all('/organizer/connect/start', requireOrganizerAuth, async (req, res) => {
   try {
     const organizerId = getSessionOrganizerId(req);
@@ -346,10 +567,12 @@ app.all('/organizer/connect/start', requireOrganizerAuth, async (req, res) => {
       `;
     }
 
+    const state = createConnectStateToken(organizer.id);
+
     const accountLink = await stripe.accountLinks.create({
       account: stripeAccountId,
-      refresh_url: `${BASE_URL}/organizer/connect/refresh`,
-      return_url: `${BASE_URL}/organizer/connect/return`,
+      refresh_url: `${BASE_URL}/organizer/connect/refresh?state=${encodeURIComponent(state)}`,
+      return_url: `${BASE_URL}/organizer/connect/return?state=${encodeURIComponent(state)}`,
       type: 'account_onboarding'
     });
 
@@ -360,18 +583,79 @@ app.all('/organizer/connect/start', requireOrganizerAuth, async (req, res) => {
   }
 });
 
-app.get('/organizer/connect/refresh', requireOrganizerAuth, async (req, res) => {
+app.get('/organizer/connect/refresh', async (req, res) => {
   try {
-    return res.redirect(303, '/organizer/connect/start');
+    const verified = verifyConnectStateToken(req.query.state);
+
+    if (!verified?.organizerId) {
+      return res.status(400).send('Invalid or expired connect state.');
+    }
+
+    const organizerId = verified.organizerId;
+
+    const rows = await sql`
+      SELECT id, email, name, stripe_account_id, subscription_status
+      FROM organizers
+      WHERE id = ${organizerId}
+      LIMIT 1
+    `;
+
+    const organizer = rows[0];
+
+    if (!organizer) {
+      return res.status(404).send('Organizer not found.');
+    }
+
+    if (organizer.subscription_status !== 'active') {
+      return res.status(400).send('Organizer must have an active subscription before connecting payouts.');
+    }
+
+    let stripeAccountId = organizer.stripe_account_id;
+
+    if (!stripeAccountId) {
+      const account = await stripe.accounts.create({
+        type: 'express',
+        email: organizer.email,
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true }
+        }
+      });
+
+      stripeAccountId = account.id;
+
+      await sql`
+        UPDATE organizers
+        SET stripe_account_id = ${stripeAccountId}
+        WHERE id = ${organizer.id}
+      `;
+    }
+
+    const state = createConnectStateToken(organizer.id);
+
+    const accountLink = await stripe.accountLinks.create({
+      account: stripeAccountId,
+      refresh_url: `${BASE_URL}/organizer/connect/refresh?state=${encodeURIComponent(state)}`,
+      return_url: `${BASE_URL}/organizer/connect/return?state=${encodeURIComponent(state)}`,
+      type: 'account_onboarding'
+    });
+
+    return res.redirect(303, accountLink.url);
   } catch (err) {
     console.error('Connect refresh error:', err.message);
     return res.status(500).send(err.message);
   }
 });
 
-app.get('/organizer/connect/return', requireOrganizerAuth, async (req, res) => {
+app.get('/organizer/connect/return', async (req, res) => {
   try {
-    const organizerId = getSessionOrganizerId(req);
+    const verified = verifyConnectStateToken(req.query.state);
+
+    if (!verified?.organizerId) {
+      return res.status(400).send('Invalid or expired connect state.');
+    }
+
+    const organizerId = verified.organizerId;
 
     const rows = await sql`
       SELECT id, stripe_account_id
@@ -394,7 +678,11 @@ app.get('/organizer/connect/return', requireOrganizerAuth, async (req, res) => {
       WHERE id = ${organizerId}
     `;
 
-    return res.sendFile(path.join(__dirname, 'public', 'organizer-return.html'));
+    if (req.session) {
+      req.session.organizerId = organizerId;
+    }
+
+    return res.redirect('/organizer');
   } catch (err) {
     console.error('Connect return error:', err.message);
     return res.status(500).send(err.message);
@@ -411,7 +699,7 @@ app.post('/organizer/leagues/create', requireOrganizerAuth, async (req, res) => 
     }
 
     const organizerRows = await sql`
-      SELECT id, subscription_status
+      SELECT id, subscription_status, onboarding_complete
       FROM organizers
       WHERE id = ${organizerId}
       LIMIT 1
@@ -425,6 +713,10 @@ app.post('/organizer/leagues/create', requireOrganizerAuth, async (req, res) => 
 
     if (organizer.subscription_status !== 'active') {
       return res.status(400).send('Organizer subscription must be active before creating leagues.');
+    }
+
+    if (!organizer.onboarding_complete) {
+      return res.status(400).send('Connect Stripe payouts before creating leagues.');
     }
 
     const rows = await sql`

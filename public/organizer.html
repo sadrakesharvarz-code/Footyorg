@@ -22,10 +22,19 @@
     <section class="card">
       <h2>Organizer Status</h2>
       <div id="organizerStatus">Loading...</div>
+
       <div class="stack">
         <button class="btn" id="refreshBtn" type="button">Refresh</button>
-        <button class="btn primary" id="connectBtn" type="button">Connect Stripe payouts</button>
+
+        <form id="subscribeForm" method="POST" action="/organizer/subscribe" style="display:none;">
+          <button class="btn primary" id="subscribeBtn" type="submit">Activate subscription</button>
+        </form>
+
+        <button class="btn primary" id="connectBtn" type="button" style="display:none;">
+          Connect Stripe payouts
+        </button>
       </div>
+
       <p id="connectMessage" class="message"></p>
       <p id="payoutStatus" class="message ok" style="display:none;">Stripe payouts connected</p>
     </section>
