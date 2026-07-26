@@ -5,49 +5,45 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Player Dashboard • FootyOrg</title>
   <link rel="stylesheet" href="/style.css">
-  <style>
-    .card { background:#fff; border:1px solid #ddd7cf; border-radius:16px; padding:24px; max-width:960px; margin: 24px auto; }
-    table { width:100%; border-collapse:collapse; margin-top:16px; }
-    th, td { padding:12px 10px; border-bottom:1px solid #eee; text-align:left; }
-    th { font-weight:700; }
-    .center { text-align:center; }
-  </style>
 </head>
 <body>
-  <div class="wrap">
+  <div class="dashboard">
     <header class="top">
       <a class="brand" href="/">FootyOrg</a>
       <nav class="nav">
-        <a class="pill" href="/">Home</a>
         <a class="pill" href="/join">Join league</a>
+        <a class="pill" href="/player">Dashboard</a>
         <form method="POST" action="/player/logout" style="margin:0;">
           <button class="pill" type="submit">Log out</button>
         </form>
       </nav>
     </header>
 
-    <main class="page">
-      <div class="card">
-        <h1>Your player dashboard</h1>
-        <p class="small">View your registration history below.</p>
-        <div id="playerInfo">Loading player data...</div>
-
-        <h2>Registrations</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>League</th>
-              <th>Amount</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="regsTable">
-            <tr><td class="center" colspan="4">Loading...</td></tr>
-          </tbody>
-        </table>
+    <section class="dashboard-header">
+      <div>
+        <h1>Player dashboard</h1>
+        <p>Manage your league registrations and account details.</p>
       </div>
-    </main>
+    </section>
+
+    <div class="card">
+      <div id="playerInfo">Loading player data...</div>
+
+      <h2>Registrations</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>League</th>
+            <th>Amount</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="regsTable">
+          <tr><td colspan="4">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <script src="/player.js"></script>

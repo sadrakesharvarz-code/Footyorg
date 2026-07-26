@@ -3,120 +3,43 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Organizer Login</title>
+  <title>Organizer Login • FootyOrg</title>
   <link rel="stylesheet" href="/style.css" />
-  <style>
-    .auth-wrap {
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 24px;
-    }
-
-    .auth-card {
-      width: 100%;
-      max-width: 520px;
-      background: #fff;
-      border: 1px solid #ddd7cf;
-      border-radius: 20px;
-      padding: 32px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
-    }
-
-    .auth-card h1 {
-      margin-bottom: 10px;
-    }
-
-    .auth-card p {
-      margin-bottom: 20px;
-      color: #5c5a54;
-    }
-
-    .auth-card form {
-      display: grid;
-      gap: 16px;
-    }
-
-    .auth-card label {
-      display: block;
-      margin-bottom: 6px;
-      font-weight: 600;
-    }
-
-    .auth-card input {
-      width: 100%;
-      padding: 12px 14px;
-      border: 1px solid #d8d3cc;
-      border-radius: 12px;
-      font: inherit;
-    }
-
-    .auth-card button {
-      border: none;
-      border-radius: 999px;
-      padding: 12px 18px;
-      background: #0f7c82;
-      color: #fff;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .auth-error {
-      display: none;
-      margin-bottom: 16px;
-      padding: 12px 14px;
-      border-radius: 12px;
-      background: #fdecec;
-      color: #912d2b;
-      border: 1px solid #f3c6c6;
-    }
-
-    .auth-links {
-      margin-top: 18px;
-    }
-
-    .auth-links a {
-      color: #0f7c82;
-      text-decoration: none;
-      font-weight: 600;
-    }
-  </style>
 </head>
 <body>
-  <main class="auth-wrap">
-    <section class="auth-card">
-      <h1>Organizer Login</h1>
-      <p>Sign in to manage your subscription, Stripe payouts, and leagues.</p>
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="/">FootyOrg</a>
+      <nav class="nav">
+        <a class="pill" href="/create">Become an organizer</a>
+        <a class="pill" href="/player/login">Player login</a>
+      </nav>
+    </header>
 
-      <div id="authError" class="auth-error"></div>
+    <main class="page">
+      <div class="card">
+        <h1>Organizer login</h1>
+        <p>Sign in to manage your subscription, Stripe payouts, and leagues.</p>
 
-      <form method="POST" action="/login">
-        <div>
-          <label for="email">Email</label>
-          <input id="email" name="email" type="email" required />
-        </div>
+        <div id="authError" class="notice" style="display:none;"></div>
 
-        <div>
-          <label for="password">Password</label>
-          <input id="password" name="password" type="password" required />
-        </div>
+        <form class="form" method="POST" action="/login">
+          <input id="email" name="email" type="email" placeholder="Email" required />
+          <input id="password" name="password" type="password" placeholder="Password" required />
+          <button class="btn primary" type="submit">Log in</button>
+        </form>
 
-        <button type="submit">Log in</button>
-      </form>
-
-      <div class="auth-links">
-        <a href="/create">Create organizer account</a>
+        <p class="small">Need an account? <a href="/create">Create one</a>.</p>
       </div>
-    </section>
-  </main>
+    </main>
+  </div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
     const error = params.get('error');
     const errorBox = document.getElementById('authError');
-
     if (error) {
-      errorBox.textContent = error;
+      errorBox.textContent = decodeURIComponent(error);
       errorBox.style.display = 'block';
     }
   </script>
