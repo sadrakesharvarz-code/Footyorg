@@ -363,7 +363,12 @@ app.post('/player/signup', async (req, res) => {
     req.session.playerEmail = player.email;
     req.session.playerName = player.full_name;
 
-    return res.redirect('/player');
+    return req.session.save((saveErr) => {
+      if (saveErr) {
+        console.error('Session save error after player signup:', saveErr.message);
+      }
+      return res.redirect('/player');
+    });
   } catch (err) {
     console.error('Player signup error:', err.message);
     return res.status(500).send('Player signup failed.');
@@ -402,7 +407,12 @@ app.post('/player/login', async (req, res) => {
     req.session.playerEmail = player.email;
     req.session.playerName = player.full_name;
 
-    return res.redirect('/player');
+    return req.session.save((saveErr) => {
+      if (saveErr) {
+        console.error('Session save error after player login:', saveErr.message);
+      }
+      return res.redirect('/player');
+    });
   } catch (err) {
     console.error('Player login error:', err.message);
     return res.redirect('/player/login?error=Login%20failed');
