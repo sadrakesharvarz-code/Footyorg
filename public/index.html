@@ -14,12 +14,14 @@
       <nav class="nav" id="homeNavLoggedOut">
         <a class="pill" href="/create">Become an organizer</a>
         <a class="btn primary" href="/login">Organizer login</a>
+        <a class="pill" href="/player/login">Player login</a>
+        <a class="pill" href="/player/create">Create player account</a>
       </nav>
 
       <nav class="nav" id="homeNavLoggedIn" style="display:none;">
         <a class="pill" href="/join">Join league</a>
-        <a class="pill" href="/organizer">Dashboard</a>
-        <form method="POST" action="/logout" style="margin:0;">
+        <a class="pill" id="dashboardLink" href="/organizer">Dashboard</a>
+        <form id="logoutForm" method="POST" action="/logout" style="margin:0;">
           <button class="btn primary" type="submit">Log out</button>
         </form>
       </nav>
@@ -31,7 +33,7 @@
         <p class="sub">Simple soccer league signup.</p>
         <div class="actions">
           <a class="btn" href="/join">Join a league</a>
-          <a class="btn primary" href="/create">Create a league</a>
+          <a id="createLeagueBtn" class="btn primary" href="/create">Create a league</a>
         </div>
         <div class="small">Apple Pay-ready checkout can be connected in the backend.</div>
       </div>
@@ -52,6 +54,23 @@
         });
 
         if (res.ok) {
+          const data = await res.json();
+          const dashboardLink = document.getElementById('dashboardLink');
+          const createLeagueBtn = document.getElementById('createLeagueBtn');
+
+          const logoutForm = document.getElementById('logoutForm');
+
+          if (data?.player && !data?.organizer) {
+            dashboardLink.href = '/player';
+            dashboardLink.textContent = 'Player dashboard';
+            if (logoutForm) logoutForm.action = '/player/logout';
+            if (createLeagueBtn) createLeagueBtn.style.display = 'none';
+          } else {
+            dashboardLink.href = '/organizer';
+            dashboardLink.textContent = 'Organizer dashboard';
+            if (logoutForm) logoutForm.action = '/logout';
+            if (createLeagueBtn) createLeagueBtn.style.display = 'inline-block';
+          }
           loggedOutNav.style.display = 'none';
           loggedInNav.style.display = 'flex';
         } else {

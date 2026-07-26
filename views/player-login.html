@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Player Login • FootyOrg</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    .auth-card { width: 100%; max-width: 520px; background: #fff; border: 1px solid #ddd7cf; border-radius: 20px; padding: 32px; }
+    .auth-card form { display: grid; gap: 16px; }
+    .auth-error { display:none; margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: #fdecec; color: #912d2b; border: 1px solid #f3c6c6; }
+    .auth-links { margin-top: 18px; }
+    .auth-links a { color: #0f7c82; text-decoration: none; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main class="auth-wrap">
+    <section class="auth-card">
+      <h1>Player Login</h1>
+      <p>Log in to view your registration dashboard.</p>
+
+      <div id="authError" class="auth-error"></div>
+
+      <form method="POST" action="/player/login">
+        <div>
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" required />
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" required />
+        </div>
+        <button type="submit">Log in</button>
+      </form>
+
+      <div class="auth-links">
+        <a href="/player/create">Create player account</a>
+        <span style="margin:0 8px; color:#999;">•</span>
+        <a href="/">Back to home</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('error');
+    const errorBox = document.getElementById('authError');
+    if (error) {
+      errorBox.textContent = error;
+      errorBox.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

@@ -204,6 +204,27 @@ function getSessionOrganizerId(req) {
   return req.session?.organizerId || null;
 }
 
+function requirePlayerAuth(req, res, next) {
+  if (req.session?.playerId) {
+    return next();
+  }
+
+  const wantsJson =
+    req.xhr ||
+    (req.headers.accept || '').includes('application/json') ||
+    (req.headers['content-type'] || '').includes('application/json');
+
+  if (wantsJson) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  return res.redirect('/player/login');
+}
+
+function getSessionPlayerId(req) {
+  return req.session?.playerId || null;
+}
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'views', 'login.html')));
 app.get('/join', (req, res) => res.sendFile(path.join(__dirname, 'views', 'join.html')));
@@ -306,8 +327,156 @@ app.post('/organizer/signup', async (req, res) => {
   }
 });
 
+app.post('/player/signup', async (req, res) => {
+  try {
+    const fullName = String(req.body?.fullName || '').trim();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const phone = String(req.body?.phone || '').trim();
+
+    if (!fullName || !email || !password) {
+      return res.status(400).send('Name, email, and password are required.');
+    }
+
+    const existing = await sql`
+      SELECT id
+      FROM players
+      WHERE lower(email) = ${email}
+      LIMIT 1
+    `;
+
+    if (existing.length) {
+      return res.status(400).send('Player with this email already exists.');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const rows = await sql`
+      INSERT INTO players (full_name, email, phone, password_hash)
+      VALUES (${fullName}, ${email}, ${phone}, ${passwordHash})
+      RETURNING id, full_name, email
+    `;
+
+    const player = rows[0];
+
+    req.session.playerId = player.id;
+    req.session.playerEmail = player.email;
+    req.session.playerName = player.full_name;
+
+    return res.redirect('/player');
+  } catch (err) {
+    console.error('Player signup error:', err.message);
+    return res.status(500).send('Player signup failed.');
+  }
+});
+
+app.post('/player/login', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+
+    if (!email || !password) {
+      return res.redirect('/player/login?error=Please%20enter%20your%20email%20and%20password');
+    }
+
+    const rows = await sql`
+      SELECT id, email, full_name, password_hash
+      FROM players
+      WHERE lower(email) = ${email}
+      LIMIT 1
+    `;
+
+    const player = rows[0];
+
+    if (!player || !player.password_hash) {
+      return res.redirect('/player/login?error=Invalid%20email%20or%20password');
+    }
+
+    const passwordOk = await bcrypt.compare(password, player.password_hash);
+
+    if (!passwordOk) {
+      return res.redirect('/player/login?error=Invalid%20email%20or%20password');
+    }
+
+    req.session.playerId = player.id;
+    req.session.playerEmail = player.email;
+    req.session.playerName = player.full_name;
+
+    return res.redirect('/player');
+  } catch (err) {
+    console.error('Player login error:', err.message);
+    return res.redirect('/player/login?error=Login%20failed');
+  }
+});
+
+app.post('/player/logout', (req, res) => {
+  if (req.session) {
+    delete req.session.playerId;
+    delete req.session.playerEmail;
+    delete req.session.playerName;
+  }
+
+  return res.redirect('/');
+});
+
+app.get('/player/dashboard-data', requirePlayerAuth, async (req, res) => {
+  try {
+    const playerId = getSessionPlayerId(req);
+
+    const playerRows = await sql`
+      SELECT id, full_name, email, phone
+      FROM players
+      WHERE id = ${playerId}
+      LIMIT 1
+    `;
+
+    const player = playerRows[0] || null;
+
+    const regs = await sql`
+      SELECT id, league_id, full_name, email, payment_status, amount
+      FROM registrations
+      WHERE lower(email) = ${player?.email || ''}
+      ORDER BY id DESC
+      LIMIT 50
+    `;
+
+    return res.json({ player, registrations: regs });
+  } catch (err) {
+    console.error('Player dashboard error:', err.message);
+    return res.status(500).send('Failed to load player dashboard.');
+  }
+});
+
 app.get('/organizer', requireOrganizerAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'organizer.html'));
+});
+
+app.get('/player/login', (req, res) => res.sendFile(path.join(__dirname, 'views', 'player-login.html')));
+app.get('/player/create', (req, res) => res.sendFile(path.join(__dirname, 'views', 'player-create.html')));
+app.get('/player', requirePlayerAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'player.html')));
+
+app.get('/auth/status', (req, res) => {
+  const organizer = req.session?.organizerId
+    ? {
+        id: req.session.organizerId,
+        email: req.session.organizerEmail || null,
+        name: req.session.organizerName || null
+      }
+    : null;
+
+  const player = req.session?.playerId
+    ? {
+        id: req.session.playerId,
+        email: req.session.playerEmail || null,
+        full_name: req.session.playerName || null
+      }
+    : null;
+
+  if (!organizer && !player) {
+    return res.status(401).json({ authenticated: false });
+  }
+
+  return res.json({ authenticated: true, organizer, player });
 });
 
 app.get('/organizer/billing-success', requireOrganizerAuth, (req, res) => {

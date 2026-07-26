@@ -11,17 +11,18 @@
     <header class="top">
       <a class="brand" href="/">FootyOrg</a>
       <nav class="nav">
-        <a class="pill" href="/login">Log in</a>
-        <a class="btn primary" href="/create">Create a league</a>
+        <a id="playerLoginLink" class="pill" href="/player/login">Player login</a>
+        <a id="playerCreateLink" class="pill" href="/player/create">Create player account</a>
       </nav>
     </header>
     <main class="page">
       <div class="card">
         <h1>Join a league</h1>
         <p>Fill in your details and you'll be sent to checkout.</p>
+        <p id="joinStatus" class="small">Already have a player account? <a href="/player/login">Log in</a> to view your dashboard.</p>
         <form class="form" method="POST" action="/checkout">
-          <input type="text" name="fullName" placeholder="Full name" required />
-          <input type="email" name="email" placeholder="Email" required />
+          <input id="fullNameInput" type="text" name="fullName" placeholder="Full name" required />
+          <input id="emailInput" type="email" name="email" placeholder="Email" required />
           <input type="tel" name="phone" placeholder="Phone" required />
           <select id="leagueId" name="leagueId" required>
             <option value="">Select a league</option>
@@ -44,6 +45,41 @@
       </div>
     </main>
   </div>
+  <script>
+    async function updateJoinPageForPlayer() {
+      try {
+        const res = await fetch('/auth/status', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data?.player) return;
+
+        const player = data.player;
+        const loginLink = document.getElementById('playerLoginLink');
+        const createLink = document.getElementById('playerCreateLink');
+        const joinStatus = document.getElementById('joinStatus');
+        const fullNameInput = document.getElementById('fullNameInput');
+        const emailInput = document.getElementById('emailInput');
+
+        if (loginLink) loginLink.style.display = 'none';
+        if (createLink) createLink.style.display = 'none';
+
+        if (joinStatus) {
+          joinStatus.innerHTML = `Logged in as <strong>${player.full_name || player.email}</strong>. <a href="/player">Go to your dashboard</a> or continue to checkout.`;
+        }
+
+        if (fullNameInput && player.full_name) {
+          fullNameInput.value = player.full_name;
+        }
+        if (emailInput && player.email) {
+          emailInput.value = player.email;
+        }
+      } catch (err) {
+        console.warn('Join page auth check failed', err);
+      }
+    }
+
+    updateJoinPageForPlayer();
+  </script>
   <script src="/script.js"></script>
 </body>
 </html>

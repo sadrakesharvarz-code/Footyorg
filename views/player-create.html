@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create Player Account • FootyOrg</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="/">FootyOrg</a>
+      <nav class="nav">
+        <a class="pill" href="/player/login">Log in</a>
+        <a class="btn" href="/join">Join a league</a>
+      </nav>
+    </header>
+
+    <main class="page">
+      <div class="card">
+        <h1>Create player account</h1>
+        <p>Register to track your league registrations and status.</p>
+
+        <form class="form" method="POST" action="/player/signup">
+          <input type="text" name="fullName" placeholder="Full name" required />
+          <input type="email" name="email" placeholder="Email" required />
+          <input type="tel" name="phone" placeholder="Phone" />
+          <input type="password" name="password" placeholder="Create a password (min 6 chars)" minlength="6" required />
+          <button class="btn primary" type="submit">Create account</button>
+        </form>
+        <div class="small" style="margin-top:18px;">
+          Already have an account? <a href="/player/login">Log in</a>.
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
