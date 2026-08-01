@@ -264,7 +264,12 @@ app.post('/login', async (req, res) => {
     req.session.organizerEmail = organizer.email;
     req.session.organizerName = organizer.name;
 
-    return res.redirect('/organizer');
+    return req.session.save((saveErr) => {
+      if (saveErr) {
+        console.error('Session save error after organizer login:', saveErr.message);
+      }
+      return res.redirect('/organizer');
+    });
   } catch (err) {
     console.error('Login error:', err.message);
     return res.redirect('/login?error=Login%20failed');
@@ -320,7 +325,12 @@ app.post('/organizer/signup', async (req, res) => {
     req.session.organizerEmail = organizer.email;
     req.session.organizerName = organizer.name;
 
-    return res.redirect('/organizer');
+    return req.session.save((saveErr) => {
+      if (saveErr) {
+        console.error('Session save error after organizer signup:', saveErr.message);
+      }
+      return res.redirect('/organizer');
+    });
   } catch (err) {
     console.error('Organizer signup error:', err.message);
     return res.status(500).send('Organizer signup failed.');
