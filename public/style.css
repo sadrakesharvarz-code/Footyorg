@@ -80,6 +80,11 @@ h1 { font-size: clamp(1.5rem, 4vw, 2rem); line-height: 1.1; margin: 0 0 8px; let
   border-radius: 14px;
   margin-bottom: 16px;
 }
+.notice.error {
+  background: #fef3f2;
+  border-color: #fecdca;
+  color: #b42318;
+}
 @media (max-width: 640px) {
   .top, .nav, .actions, .row { display: grid; grid-template-columns: 1fr; }
   .hero { min-height: auto; padding: 24px 0 56px; }

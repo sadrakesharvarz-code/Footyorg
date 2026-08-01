@@ -21,6 +21,8 @@
         <h1>Create player account</h1>
         <p>Register to track your league registrations and status.</p>
 
+        <div id="formMessage" class="notice" hidden></div>
+
         <form class="form" method="POST" action="/player/signup">
           <input type="text" name="fullName" placeholder="Full name" required />
           <input type="email" name="email" placeholder="Email" required />
@@ -33,5 +35,17 @@
       </div>
     </main>
   </div>
+
+  <script>
+    const messageEl = document.getElementById('formMessage');
+    const params = new URLSearchParams(window.location.search);
+    const errorMessage = params.get('error');
+
+    if (messageEl && errorMessage) {
+      messageEl.textContent = errorMessage;
+      messageEl.className = 'notice error';
+      messageEl.hidden = false;
+    }
+  </script>
 </body>
 </html>

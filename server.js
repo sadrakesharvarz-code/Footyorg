@@ -335,7 +335,11 @@ app.post('/player/signup', async (req, res) => {
     const phone = String(req.body?.phone || '').trim();
 
     if (!fullName || !email || !password) {
-      return res.status(400).send('Name, email, and password are required.');
+      return res.redirect('/player/create?error=' + encodeURIComponent('Please enter your full name, email, and password.'));
+    }
+
+    if (password.length < 6) {
+      return res.redirect('/player/create?error=' + encodeURIComponent('Password must be at least 6 characters long.'));
     }
 
     const existing = await sql`
@@ -346,7 +350,7 @@ app.post('/player/signup', async (req, res) => {
     `;
 
     if (existing.length) {
-      return res.status(400).send('Player with this email already exists.');
+      return res.redirect('/player/create?error=' + encodeURIComponent('A player account already exists for that email address.'));
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -371,7 +375,7 @@ app.post('/player/signup', async (req, res) => {
     });
   } catch (err) {
     console.error('Player signup error:', err.message);
-    return res.status(500).send('Player signup failed.');
+    return res.redirect('/player/create?error=' + encodeURIComponent('Player signup failed. Please try again in a moment.'));
   }
 });
 
