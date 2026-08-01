@@ -922,9 +922,30 @@ app.post('/organizer/leagues/create', requireOrganizerAuth, async (req, res) => 
   }
 });
 
+app.get('/api/leagues', async (req, res) => {
+  try {
+    const leagues = await sql`
+      SELECT l.id, l.name, l.slug, l.price, l.status, o.name AS organizer_name
+      FROM leagues l
+      JOIN organizers o ON o.id = l.organizer_id
+      WHERE l.status = 'active'
+      ORDER BY l.created_at DESC
+    `;
+
+    return res.json({ leagues });
+  } catch (err) {
+    console.error('Load leagues error:', err.message);
+    return res.status(500).json({ error: 'Unable to load leagues right now.' });
+  }
+});
+
 app.post('/checkout', async (req, res) => {
   try {
     const { fullName, email, leagueId, skillLevel, waiver } = req.body;
+    const playerSessionName = String(req.session?.playerName || '').trim();
+    const playerSessionEmail = String(req.session?.playerEmail || '').trim().toLowerCase();
+    const resolvedFullName = String(fullName || playerSessionName || '').trim();
+    const resolvedEmail = String(email || playerSessionEmail || '').trim().toLowerCase();
 
     if (!waiver) {
       return res.status(400).send('You must accept the waiver.');
@@ -932,6 +953,14 @@ app.post('/checkout', async (req, res) => {
 
     if (!leagueId) {
       return res.status(400).send('League is required.');
+    }
+
+    if (!req.session?.playerId && !resolvedFullName) {
+      return res.status(400).send('Full name is required.');
+    }
+
+    if (!req.session?.playerId && !resolvedEmail) {
+      return res.status(400).send('Email is required.');
     }
 
     const rows = await sql`
@@ -967,7 +996,7 @@ app.post('/checkout', async (req, res) => {
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
-      customer_email: email,
+      customer_email: resolvedEmail || undefined,
       line_items: [
         {
           price_data: {
@@ -990,7 +1019,7 @@ app.post('/checkout', async (req, res) => {
         organizerId: String(league.organizer_id),
         leagueDbId: String(league.id),
         leagueSlug: league.slug,
-        fullName: fullName || '',
+        fullName: resolvedFullName,
         skillLevel: skillLevel || ''
       },
       success_url: `${BASE_URL}/success`,

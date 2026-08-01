@@ -18,17 +18,15 @@
     <main class="page">
       <div class="card">
         <h1>Join a league</h1>
-        <p>Fill in your details and you'll be sent to checkout.</p>
+        <p id="joinIntro">Fill in your details and you'll be sent to checkout.</p>
         <p id="joinStatus" class="small">Already have a player account? <a href="/player/login">Log in</a> to view your dashboard.</p>
         <form class="form" method="POST" action="/checkout">
-          <input id="fullNameInput" type="text" name="fullName" placeholder="Full name" required />
-          <input id="emailInput" type="email" name="email" placeholder="Email" required />
-          <input type="tel" name="phone" placeholder="Phone" required />
+          <div id="playerDetails">
+            <input id="fullNameInput" type="text" name="fullName" placeholder="Full name" required />
+            <input id="emailInput" type="email" name="email" placeholder="Email" required />
+          </div>
           <select id="leagueId" name="leagueId" required>
-            <option value="">Select a league</option>
-            <option value="downtown-7v7">Downtown 7v7 — Toronto — $129</option>
-            <option value="midtown-futsal">Midtown Futsal — Toronto — $99</option>
-            <option value="scarborough-11v11">Scarborough 11v11 — Toronto — $145</option>
+            <option value="">Loading leagues...</option>
           </select>
           <select name="skillLevel" required>
             <option value="">Skill level</option>
@@ -46,23 +44,59 @@
     </main>
   </div>
   <script>
+    async function loadLeagues() {
+      const leagueSelect = document.getElementById('leagueId');
+      if (!leagueSelect) return;
+
+      try {
+        const res = await fetch('/api/leagues', { credentials: 'same-origin' });
+        if (!res.ok) throw new Error('Unable to load leagues');
+        const data = await res.json();
+        const leagues = Array.isArray(data?.leagues) ? data.leagues : [];
+
+        leagueSelect.innerHTML = '<option value="">Select a league</option>' + leagues.map((league) => `
+          <option value="${league.slug}">
+            ${league.name} — ${league.organizer_name || 'FootyOrg'} — CAD ${(Number(league.price || 0) / 100).toFixed(2)}
+          </option>
+        `).join('');
+      } catch (err) {
+        leagueSelect.innerHTML = '<option value="">No leagues available right now</option>';
+      }
+    }
+
     async function updateJoinPageForPlayer() {
       try {
         const res = await fetch('/auth/status', { credentials: 'same-origin' });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!data?.player) return;
-
-        const player = data.player;
+        const playerDetails = document.getElementById('playerDetails');
+        const joinIntro = document.getElementById('joinIntro');
+        const joinStatus = document.getElementById('joinStatus');
         const loginLink = document.getElementById('playerLoginLink');
         const createLink = document.getElementById('playerCreateLink');
-        const joinStatus = document.getElementById('joinStatus');
         const fullNameInput = document.getElementById('fullNameInput');
         const emailInput = document.getElementById('emailInput');
 
+        if (!res.ok) {
+          if (playerDetails) playerDetails.style.display = 'grid';
+          if (joinIntro) joinIntro.textContent = 'Fill in your details and you\'ll be sent to checkout.';
+          await loadLeagues();
+          return;
+        }
+
+        const data = await res.json();
+        if (!data?.player) {
+          if (playerDetails) playerDetails.style.display = 'grid';
+          if (joinIntro) joinIntro.textContent = 'Fill in your details and you\'ll be sent to checkout.';
+          await loadLeagues();
+          return;
+        }
+
+        const player = data.player;
+
         if (loginLink) loginLink.style.display = 'none';
         if (createLink) createLink.style.display = 'none';
+        if (playerDetails) playerDetails.style.display = 'none';
 
+        if (joinIntro) joinIntro.textContent = 'Choose a league to continue to checkout.';
         if (joinStatus) {
           joinStatus.innerHTML = `Logged in as <strong>${player.full_name || player.email}</strong>. <a href="/player">Go to your dashboard</a> or continue to checkout.`;
         }
@@ -73,8 +107,11 @@
         if (emailInput && player.email) {
           emailInput.value = player.email;
         }
+
+        await loadLeagues();
       } catch (err) {
         console.warn('Join page auth check failed', err);
+        await loadLeagues();
       }
     }
 
