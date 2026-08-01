@@ -11,11 +11,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const data = await res.json();
+
       if (!res.ok) {
-        throw new Error('Failed to load dashboard');
+        throw new Error(data?.error || 'Failed to load dashboard');
       }
 
-      const data = await res.json();
       const player = data.player;
       const regs = Array.isArray(data.registrations) ? data.registrations : [];
 
@@ -41,7 +42,10 @@ document.addEventListener('DOMContentLoaded', () => {
         </tr>
       `).join('');
     } catch (err) {
-      document.getElementById('playerInfo').textContent = 'Error loading dashboard.';
+      const playerInfo = document.getElementById('playerInfo');
+      if (playerInfo) {
+        playerInfo.innerHTML = `<p class="error">${err.message || 'Error loading dashboard.'}</p>`;
+      }
     }
   }
 

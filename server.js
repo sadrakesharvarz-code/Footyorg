@@ -457,7 +457,11 @@ app.get('/player/dashboard-data', requirePlayerAuth, async (req, res) => {
     return res.json({ player, registrations: regs });
   } catch (err) {
     console.error('Player dashboard error:', err.message);
-    return res.status(500).send('Failed to load player dashboard.');
+    return res.status(500).json({
+      player: null,
+      registrations: [],
+      error: 'We could not load your dashboard right now. Please try again in a moment.'
+    });
   }
 });
 
