@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch('/player/dashboard-data', {
         method: 'GET',
-        credentials: 'same-origin'
+        credentials: 'include'
       });
 
       if (res.status === 401) {

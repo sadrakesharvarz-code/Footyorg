@@ -96,7 +96,7 @@ async function loadDashboard() {
   try {
     const res = await fetch('/organizer/dashboard', {
       method: 'GET',
-      credentials: 'same-origin'
+      credentials: 'include'
     });
 
     if (res.status === 401 || isHtmlResponse(res)) {
@@ -169,7 +169,7 @@ connectBtn.addEventListener('click', async () => {
     const res = await fetch('/organizer/connect/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
+      credentials: 'include',
       body: JSON.stringify({})
     });
 
@@ -222,7 +222,7 @@ leagueForm.addEventListener('submit', async (e) => {
     const res = await fetch('/organizer/leagues/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
+      credentials: 'include',
       body: JSON.stringify(payload)
     });
 
