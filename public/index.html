@@ -5,13 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FootyOrg</title>
   <link rel="stylesheet" href="/style.css" />
+  <style>
+    #homeNavLoggedOut,
+    #homeNavLoggedIn {
+      visibility: hidden;
+    }
+  </style>
 </head>
 <body>
   <div class="wrap">
     <header class="top">
       <div class="brand">FootyOrg</div>
 
-      <nav class="nav" id="homeNavLoggedOut">
+      <nav class="nav" id="homeNavLoggedOut" style="display:flex;">
         <a class="pill" href="/create">Become an organizer</a>
         <a class="btn primary" href="/login">Organizer login</a>
         <a class="pill" href="/player/login">Player login</a>
@@ -50,14 +56,13 @@
       try {
         const res = await fetch('/auth/status', {
           method: 'GET',
-          credentials: 'same-origin'
+          credentials: 'include'
         });
 
         if (res.ok) {
           const data = await res.json();
           const dashboardLink = document.getElementById('dashboardLink');
           const createLeagueBtn = document.getElementById('createLeagueBtn');
-
           const logoutForm = document.getElementById('logoutForm');
 
           if (data?.player && !data?.organizer) {
@@ -71,6 +76,7 @@
             if (logoutForm) logoutForm.action = '/logout';
             if (createLeagueBtn) createLeagueBtn.style.display = 'inline-block';
           }
+
           loggedOutNav.style.display = 'none';
           loggedInNav.style.display = 'flex';
         } else {
@@ -80,6 +86,9 @@
       } catch {
         loggedOutNav.style.display = 'flex';
         loggedInNav.style.display = 'none';
+      } finally {
+        loggedOutNav.style.visibility = 'visible';
+        loggedInNav.style.visibility = 'visible';
       }
     }
 
