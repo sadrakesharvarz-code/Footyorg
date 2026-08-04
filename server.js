@@ -15,6 +15,106 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 const sql = neon(process.env.DATABASE_URL);
 
+async function initializeTeamTables() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS teams (
+      id SERIAL PRIMARY KEY,
+      league_db_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS team_players (
+      id SERIAL PRIMARY KEY,
+      team_id INTEGER NOT NULL,
+      registration_id INTEGER NOT NULL,
+      position TEXT NOT NULL DEFAULT 'Unassigned',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(team_id, registration_id)
+    )
+  `;
+}
+
+async function ensureLeagueTeam(leagueDbId, leagueName) {
+  const existingRows = await sql`
+    SELECT id, name
+    FROM teams
+    WHERE league_db_id = ${leagueDbId}
+    LIMIT 1
+  `;
+
+  const existing = existingRows[0];
+  if (existing) {
+    return existing;
+  }
+
+  const baseName = String(leagueName || '').trim() || 'League';
+  const rows = await sql`
+    INSERT INTO teams (league_db_id, name)
+    VALUES (${leagueDbId}, ${`${baseName} Team`})
+    RETURNING id, name
+  `;
+
+  return rows[0];
+}
+
+async function ensureTeamMembership(registrationId, leagueDbId, leagueName) {
+  if (!registrationId || !leagueDbId) {
+    return null;
+  }
+
+  const team = await ensureLeagueTeam(leagueDbId, leagueName);
+
+  const existingRows = await sql`
+    SELECT id
+    FROM team_players
+    WHERE team_id = ${team.id}
+      AND registration_id = ${registrationId}
+    LIMIT 1
+  `;
+
+  if (existingRows[0]) {
+    return existingRows[0];
+  }
+
+  const rows = await sql`
+    INSERT INTO team_players (team_id, registration_id, position)
+    VALUES (${team.id}, ${registrationId}, 'Unassigned')
+    RETURNING id
+  `;
+
+  return rows[0];
+}
+
+async function syncLeagueTeams() {
+  const leagues = await sql`
+    SELECT id, name
+    FROM leagues
+    ORDER BY id
+  `;
+
+  for (const league of leagues) {
+    await ensureLeagueTeam(league.id, league.name);
+
+    const registrations = await sql`
+      SELECT id
+      FROM registrations
+      WHERE league_db_id = ${league.id}
+      ORDER BY id
+    `;
+
+    for (const registration of registrations) {
+      await ensureTeamMembership(registration.id, league.id, league.name);
+    }
+  }
+}
+
+initializeTeamTables().catch((err) => {
+  console.error('Team table initialization error:', err.message);
+});
+
 const CONNECT_STATE_SECRET =
   process.env.CONNECT_STATE_SECRET ||
   process.env.SESSION_SECRET ||
@@ -126,7 +226,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
           checkoutSession.customer_email ||
           '';
 
-        await sql`
+        const insertedRows = await sql`
           INSERT INTO registrations (
             stripe_session_id,
             stripe_event_id,
@@ -152,7 +252,17 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
             ${checkoutSession.amount_total || 0}
           )
           ON CONFLICT (stripe_event_id) DO NOTHING
+          RETURNING id, league_db_id
         `;
+
+        const insertedRegistration = insertedRows[0] || null;
+        if (insertedRegistration) {
+          await ensureTeamMembership(
+            insertedRegistration.id,
+            insertedRegistration.league_db_id,
+            checkoutSession.metadata?.leagueName || ''
+          );
+        }
       }
     }
 
@@ -464,7 +574,29 @@ app.get('/player/dashboard-data', requirePlayerAuth, async (req, res) => {
       LIMIT 50
     `;
 
-    return res.json({ player, registrations: regs });
+    await syncLeagueTeams();
+
+    const teams = await sql`
+      SELECT
+        t.id AS team_id,
+        t.name AS team_name,
+        l.id AS league_db_id,
+        l.name AS league_name,
+        l.slug AS league_slug,
+        r.id AS registration_id,
+        r.full_name,
+        r.email,
+        tp.id AS membership_id,
+        tp.position
+      FROM team_players tp
+      JOIN teams t ON t.id = tp.team_id
+      JOIN leagues l ON l.id = t.league_db_id
+      JOIN registrations r ON r.id = tp.registration_id
+      WHERE lower(r.email) = ${player?.email || ''}
+      ORDER BY l.name, t.name, r.full_name
+    `;
+
+    return res.json({ player, registrations: regs, teams });
   } catch (err) {
     console.error('Player dashboard error:', err.message);
     return res.status(500).json({
@@ -652,9 +784,32 @@ app.get('/organizer/dashboard', requireOrganizerAuth, async (req, res) => {
       ORDER BY l.created_at DESC
     `;
 
+    await syncLeagueTeams();
+
+    const teams = await sql`
+      SELECT
+        t.id AS team_id,
+        t.name AS team_name,
+        l.id AS league_db_id,
+        l.name AS league_name,
+        l.slug AS league_slug,
+        r.id AS registration_id,
+        r.full_name,
+        r.email,
+        tp.id AS membership_id,
+        tp.position
+      FROM teams t
+      JOIN leagues l ON l.id = t.league_db_id
+      LEFT JOIN team_players tp ON tp.team_id = t.id
+      LEFT JOIN registrations r ON r.id = tp.registration_id
+      WHERE l.organizer_id = ${organizerId}
+      ORDER BY l.name, t.name, r.full_name
+    `;
+
     return res.json({
       organizer: organizerRows[0] || null,
-      leagues
+      leagues,
+      teams
     });
   } catch (err) {
     console.error('Dashboard error:', err.message);
@@ -949,6 +1104,33 @@ app.get('/api/leagues', async (req, res) => {
   }
 });
 
+app.patch('/organizer/teams/players/:membershipId/position', requireOrganizerAuth, async (req, res) => {
+  try {
+    const membershipId = Number(req.params.membershipId);
+    const position = String(req.body?.position || 'Unassigned').trim() || 'Unassigned';
+
+    if (!Number.isFinite(membershipId)) {
+      return res.status(400).json({ error: 'Invalid roster entry id.' });
+    }
+
+    const rows = await sql`
+      UPDATE team_players
+      SET position = ${position}
+      WHERE id = ${membershipId}
+      RETURNING id, position
+    `;
+
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Roster entry not found.' });
+    }
+
+    return res.json({ membership: rows[0] });
+  } catch (err) {
+    console.error('Update roster position error:', err.message);
+    return res.status(500).json({ error: 'Unable to update player position.' });
+  }
+});
+
 app.post('/checkout', async (req, res) => {
   try {
     const { fullName, email, leagueId, skillLevel, waiver } = req.body;
@@ -1029,6 +1211,7 @@ app.post('/checkout', async (req, res) => {
         organizerId: String(league.organizer_id),
         leagueDbId: String(league.id),
         leagueSlug: league.slug,
+        leagueName: league.name,
         fullName: resolvedFullName,
         skillLevel: skillLevel || ''
       },

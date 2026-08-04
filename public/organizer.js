@@ -1,5 +1,7 @@
 const organizerStatus = document.getElementById('organizerStatus');
 const leaguesTable = document.getElementById('leaguesTable');
+const leagueTeams = document.getElementById('leagueTeams');
+const leagueTeams = document.getElementById('leagueTeams');
 const refreshBtn = document.getElementById('refreshBtn');
 const subscribeForm = document.getElementById('subscribeForm');
 const subscribeBtn = document.getElementById('subscribeBtn');
@@ -34,6 +36,15 @@ function statusText(row) {
 
 function redirectToLogin() {
   window.location.href = '/login';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function parseError(res) {
@@ -111,6 +122,7 @@ async function loadDashboard() {
     const data = await res.json();
     const organizer = data.organizer || null;
     const leagues = Array.isArray(data.leagues) ? data.leagues : [];
+    const teams = Array.isArray(data.teams) ? data.teams : [];
 
     currentOrganizer = organizer;
 
@@ -135,6 +147,75 @@ async function loadDashboard() {
       `).join('');
     } else {
       leaguesTable.innerHTML = '<tr><td colspan="6" class="muted">No leagues yet.</td></tr>';
+    }
+
+    if (!teams.length) {
+      leagueTeams.innerHTML = '<p class="muted">No team rosters yet.</p>';
+    } else {
+      const groupedTeams = teams.reduce((acc, team) => {
+        const key = `${team.league_db_id || ''}-${team.team_id || ''}`;
+        if (!acc[key]) {
+          acc[key] = {
+            leagueName: team.league_name || team.league_slug || 'League',
+            teamName: team.team_name || 'Team',
+            players: []
+          };
+        }
+        acc[key].players.push(team);
+        return acc;
+      }, {});
+
+      leagueTeams.innerHTML = Object.values(groupedTeams).map((group) => `
+        <div style="margin-bottom: 18px;">
+          <h3 style="margin: 0 0 8px;">${escapeHtml(group.leagueName)} — ${escapeHtml(group.teamName)}</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>Position</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${group.players.map((player) => `
+                <tr>
+                  <td>${escapeHtml(player.full_name || player.email || 'Player')}</td>
+                  <td>
+                    <input
+                      data-membership-id="${player.membership_id || ''}"
+                      value="${escapeHtml(player.position || 'Unassigned')}"
+                      style="width: 100%;"
+                    />
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `).join('');
+
+      leagueTeams.querySelectorAll('input[data-membership-id]').forEach((input) => {
+        input.addEventListener('change', async (event) => {
+          const membershipId = event.target.getAttribute('data-membership-id');
+          const position = event.target.value.trim() || 'Unassigned';
+
+          try {
+            const res = await fetch(`/organizer/teams/players/${membershipId}/position`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ position })
+            });
+
+            if (!res.ok) {
+              throw new Error('Unable to update position');
+            }
+
+            event.target.style.borderColor = '#2e8b57';
+          } catch (err) {
+            event.target.style.borderColor = '#b42318';
+          }
+        });
+      });
     }
   } catch (err) {
     organizerStatus.innerHTML = `<span class="error">Error:</span> ${err.message}`;
