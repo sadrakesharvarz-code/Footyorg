@@ -3,156 +3,120 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Join a league · FootyOrg</title>
+  <title>Join a league • FootyOrg</title>
   <link rel="stylesheet" href="/style.css" />
-  <style>
-    #joinNavLoggedOut,
-    #joinNavLoggedIn {
-      visibility: hidden;
-    }
-  </style>
 </head>
 <body>
   <div class="wrap">
     <header class="top">
       <a class="brand" href="/">FootyOrg</a>
-
-      <nav class="nav" id="joinNavLoggedOut" style="display:flex;">
-        <a class="pill" href="/login">Log in</a>
-        <a class="btn primary" href="/create">Create a league</a>
-      </nav>
-
-      <nav class="nav" id="joinNavLoggedIn" style="display:none;">
-        <form id="joinLogoutForm" method="POST" action="/player/logout" style="margin:0;">
-          <button class="btn primary" type="submit">Log out</button>
-        </form>
+      <nav class="nav">
+        <a id="playerLoginLink" class="pill" href="/player/login">Player login</a>
+        <a id="playerCreateLink" class="pill" href="/player/create">Create player account</a>
       </nav>
     </header>
-
     <main class="page">
       <div class="card">
         <h1>Join a league</h1>
-        <p>Fill in your details and you'll be sent to checkout.</p>
-
-        <div class="notice" id="playerNotice" style="display:none;"></div>
-        <div class="notice" id="leagueError" style="display:none; background:#fdecea; border-color:#f5c2c0; color:#611a15;"></div>
-
-        <form class="form" method="POST" action="/checkout" id="joinForm">
-          <input type="text" id="fullNameInput" name="fullName" placeholder="Full name" required />
-          <input type="email" id="emailInput" name="email" placeholder="Email" required />
-          <input type="tel" name="phone" placeholder="Phone" required />
-
+        <p id="joinIntro">Fill in your details and you'll be sent to checkout.</p>
+        <p id="joinStatus" class="small">Already have a player account? <a href="/player/login">Log in</a> to view your dashboard.</p>
+        <form class="form" method="POST" action="/checkout">
+          <div id="playerDetails">
+            <input id="fullNameInput" type="text" name="fullName" placeholder="Full name" required />
+            <input id="emailInput" type="email" name="email" placeholder="Email" required />
+          </div>
           <select id="leagueId" name="leagueId" required>
             <option value="">Loading leagues...</option>
           </select>
-
           <select name="skillLevel" required>
             <option value="">Skill level</option>
             <option>Recreational</option>
             <option>Intermediate</option>
             <option>Competitive</option>
           </select>
-
           <label class="checkbox">
             <input type="checkbox" name="waiver" value="yes" required />
             <span>I agree to the league waiver and code of conduct.</span>
           </label>
-
           <button class="btn primary" type="submit">Continue to checkout</button>
         </form>
       </div>
     </main>
-
-    <script src="/script.js"></script>
-    <script>
-      (async function checkPlayerSession() {
-        const loggedOutNav = document.getElementById('joinNavLoggedOut');
-        const loggedInNav = document.getElementById('joinNavLoggedIn');
-
-        try {
-          const res = await fetch('/auth/status', {
-            method: 'GET',
-            credentials: 'include'
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-
-            if (data?.player) {
-              const notice = document.getElementById('playerNotice');
-              const fullNameInput = document.getElementById('fullNameInput');
-              const emailInput = document.getElementById('emailInput');
-
-              notice.textContent = `Signed in as ${data.player.full_name || data.player.email}. Your info is pre-filled below.`;
-              notice.style.display = 'block';
-
-              fullNameInput.value = data.player.full_name || '';
-              emailInput.value = data.player.email || '';
-
-              fullNameInput.readOnly = true;
-              emailInput.readOnly = true;
-
-              loggedOutNav.style.display = 'none';
-              loggedInNav.style.display = 'flex';
-            } else {
-              loggedOutNav.style.display = 'flex';
-              loggedInNav.style.display = 'none';
-            }
-          } else {
-            loggedOutNav.style.display = 'flex';
-            loggedInNav.style.display = 'none';
-          }
-        } catch {
-          loggedOutNav.style.display = 'flex';
-          loggedInNav.style.display = 'none';
-        } finally {
-          loggedOutNav.style.visibility = 'visible';
-          loggedInNav.style.visibility = 'visible';
-        }
-      })();
-
-      (async function loadLeagues() {
-        const leagueSelect = document.getElementById('leagueId');
-        const leagueError = document.getElementById('leagueError');
-
-        try {
-          const res = await fetch('/api/leagues', {
-            method: 'GET',
-            credentials: 'include'
-          });
-
-          if (!res.ok) throw new Error('Failed to load leagues');
-
-          const data = await res.json();
-          const leagues = data.leagues || [];
-
-          leagueSelect.innerHTML = '';
-
-          if (!leagues.length) {
-            leagueSelect.innerHTML = '<option value="">No leagues available right now</option>';
-            leagueSelect.disabled = true;
-            return;
-          }
-
-          const placeholder = document.createElement('option');
-          placeholder.value = '';
-          placeholder.textContent = 'Select a league';
-          leagueSelect.appendChild(placeholder);
-
-          leagues.forEach((league) => {
-            const option = document.createElement('option');
-            option.value = league.slug;
-            option.textContent = `${league.name} — ${league.organizer_name} — $${(league.price / 100).toFixed(2)}`;
-            leagueSelect.appendChild(option);
-          });
-        } catch (err) {
-          leagueSelect.innerHTML = '<option value="">Unable to load leagues</option>';
-          leagueSelect.disabled = true;
-          leagueError.textContent = 'We could not load available leagues right now. Please refresh or try again shortly.';
-          leagueError.style.display = 'block';
-        }
-      })();
-    </script>
   </div>
+  <script>
+    async function loadLeagues() {
+      const leagueSelect = document.getElementById('leagueId');
+      if (!leagueSelect) return;
+
+      try {
+        const res = await fetch('/api/leagues', { credentials: 'same-origin' });
+        if (!res.ok) throw new Error('Unable to load leagues');
+        const data = await res.json();
+        const leagues = Array.isArray(data?.leagues) ? data.leagues : [];
+
+        leagueSelect.innerHTML = '<option value="">Select a league</option>' + leagues.map((league) => `
+          <option value="${league.slug}">
+            ${league.name} — ${league.organizer_name || 'FootyOrg'} — CAD ${(Number(league.price || 0) / 100).toFixed(2)}
+          </option>
+        `).join('');
+      } catch (err) {
+        leagueSelect.innerHTML = '<option value="">No leagues available right now</option>';
+      }
+    }
+
+    async function updateJoinPageForPlayer() {
+      try {
+        const res = await fetch('/auth/status', { credentials: 'same-origin' });
+        const playerDetails = document.getElementById('playerDetails');
+        const joinIntro = document.getElementById('joinIntro');
+        const joinStatus = document.getElementById('joinStatus');
+        const loginLink = document.getElementById('playerLoginLink');
+        const createLink = document.getElementById('playerCreateLink');
+        const fullNameInput = document.getElementById('fullNameInput');
+        const emailInput = document.getElementById('emailInput');
+
+        if (!res.ok) {
+          if (playerDetails) playerDetails.style.display = 'grid';
+          if (joinIntro) joinIntro.textContent = 'Fill in your details and you\'ll be sent to checkout.';
+          await loadLeagues();
+          return;
+        }
+
+        const data = await res.json();
+        if (!data?.player) {
+          if (playerDetails) playerDetails.style.display = 'grid';
+          if (joinIntro) joinIntro.textContent = 'Fill in your details and you\'ll be sent to checkout.';
+          await loadLeagues();
+          return;
+        }
+
+        const player = data.player;
+
+        if (loginLink) loginLink.style.display = 'none';
+        if (createLink) createLink.style.display = 'none';
+        if (playerDetails) playerDetails.style.display = 'none';
+
+        if (joinIntro) joinIntro.textContent = 'Choose a league to continue to checkout.';
+        if (joinStatus) {
+          joinStatus.innerHTML = `Logged in as <strong>${player.full_name || player.email}</strong>. <a href="/player">Go to your dashboard</a> or continue to checkout.`;
+        }
+
+        if (fullNameInput && player.full_name) {
+          fullNameInput.value = player.full_name;
+        }
+        if (emailInput && player.email) {
+          emailInput.value = player.email;
+        }
+
+        await loadLeagues();
+      } catch (err) {
+        console.warn('Join page auth check failed', err);
+        await loadLeagues();
+      }
+    }
+
+    updateJoinPageForPlayer();
+  </script>
+  <script src="/script.js"></script>
 </body>
 </html>
